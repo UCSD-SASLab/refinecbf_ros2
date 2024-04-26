@@ -1,3 +1,3 @@
 bool active
-float32[] A
+float32[] a_matrix
 float32[] b
