@@ -1,0 +1,10 @@
+/**:
+  ros__parameters:  
+    topics:
+      in_flight: '/control/in_flight'
+    services:
+      takeoff: "/takeoff"
+      land: "/land"
+      target_position: "/target_position"
+      stop_setpoints: "/stop_setpoints"
+  

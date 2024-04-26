@@ -1,0 +1,31 @@
+/**:
+  ros__parameters:
+    topics:
+      robot_state: '/state'
+      cbf_state: '/safety_filter/state'
+
+      disturbance_update: '/env/disturbance_update'
+      actuation_update: '/env/actuation_update'
+      sdf_update: '/env/sdf_update'
+      vf_update: '/safety_filter/vf_update'
+
+      robot_safe_control: '/robot/final_control'
+      cbf_safe_control: '/safety_filter/safe_control'
+      cbf_nominal_control: '/safety_filter/nominal_control'
+      robot_disturbance: '/robot/disturbance'
+      simulated_disturbance: '/stack/disturbance'
+      value_function: '/safety_filter/value_function'
+
+      obstacle_marker: '/visualization/obstacle_marker'
+      sdf_marker: '/visualization/sdf_marker'
+      vf_marker: '/visualization/vf_marker'
+      goal_marker: '/visualization/goal'
+      obstacle_update: '/visualization/obstacle_update'
+
+      robot_external_control: '/robot/external_control'
+      cbf_external_control: '/safety_filter/external_control'
+      publish_external_control_flag: '/safety_filter/externally_controlled'
+    services:
+      modify_environment: '/env/modify_environment'
+      activate_obstacle: '/env/activate_obstacle'
+      highlevel_command: '/user/highlevel_command'
