@@ -1,69 +1,65 @@
-# toplevel CMakeLists.txt for a catkin workspace
-# catkin/cmake/toplevel.cmake
+cmake_minimum_required(VERSION 3.8)
+project(refinecbf_ros2)
 
-cmake_minimum_required(VERSION 3.0.2)
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
 
-project(Project)
+# find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
+find_package(rclpy REQUIRED)
+find_package(example_interfaces REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(crazyflie_interfaces REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 
-set(CATKIN_TOPLEVEL TRUE)
-
-# search for catkin within the workspace
-set(_cmd "catkin_find_pkg" "catkin" "${CMAKE_SOURCE_DIR}")
-execute_process(COMMAND ${_cmd}
-  RESULT_VARIABLE _res
-  OUTPUT_VARIABLE _out
-  ERROR_VARIABLE _err
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  ERROR_STRIP_TRAILING_WHITESPACE
+install(DIRECTORY
+  launch
+  config
+  DESTINATION share/${PROJECT_NAME}/
 )
-if(NOT _res EQUAL 0 AND NOT _res EQUAL 2)
-  # searching fot catkin resulted in an error
-  string(REPLACE ";" " " _cmd_str "${_cmd}")
-  message(FATAL_ERROR "Search for 'catkin' in workspace failed (${_cmd_str}): ${_err}")
+
+# ament_python_install_package(${PROJECT_NAME})
+
+install(PROGRAMS
+  scripts/disturbance_node.py
+  scripts/obstacle_node.py
+  scripts/refine_cbf_node.py
+  scripts/hj_reachability_node.py
+  scripts/modify_environment.py
+  scripts/crazyflie/cf_nominal_controller.py
+  scripts/crazyflie/cf_hw_interface.py
+  scripts/crazyflie/cf_visualization.py
+  scripts/template/nominal_controller.py
+  scripts/config.py
+  DESTINATION lib/${PROJECT_NAME}  
+)
+
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/Array.msg"
+  "msg/ControlArray.msg"
+  "msg/HiLoArray.msg"
+  "msg/Obstacle.msg"
+  "msg/Obstacles.msg"
+  "msg/ValueFunctionMsg.msg"
+  "srv/ActivateObstacle.srv"
+  "srv/ModifyEnvironment.srv"
+  "srv/HighLevelCommand.srv"
+ )
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # comment the line when a copyright and license is added to all source files
+  set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # comment the line when this package is in a git repo and when
+  # a copyright and license is added to all source files
+  set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
 endif()
 
-# include catkin from workspace or via find_package()
-if(_res EQUAL 0)
-  set(catkin_EXTRAS_DIR "${CMAKE_SOURCE_DIR}/${_out}/cmake")
-  # include all.cmake without add_subdirectory to let it operate in same scope
-  include(${catkin_EXTRAS_DIR}/all.cmake NO_POLICY_SCOPE)
-  add_subdirectory("${_out}")
-
-else()
-  # use either CMAKE_PREFIX_PATH explicitly passed to CMake as a command line argument
-  # or CMAKE_PREFIX_PATH from the environment
-  if(NOT DEFINED CMAKE_PREFIX_PATH)
-    if(NOT "$ENV{CMAKE_PREFIX_PATH}" STREQUAL "")
-      if(NOT WIN32)
-        string(REPLACE ":" ";" CMAKE_PREFIX_PATH $ENV{CMAKE_PREFIX_PATH})
-      else()
-        set(CMAKE_PREFIX_PATH $ENV{CMAKE_PREFIX_PATH})
-      endif()
-    endif()
-  endif()
-
-  # list of catkin workspaces
-  set(catkin_search_path "")
-  foreach(path ${CMAKE_PREFIX_PATH})
-    if(EXISTS "${path}/.catkin")
-      list(FIND catkin_search_path ${path} _index)
-      if(_index EQUAL -1)
-        list(APPEND catkin_search_path ${path})
-      endif()
-    endif()
-  endforeach()
-
-  # search for catkin in all workspaces
-  set(CATKIN_TOPLEVEL_FIND_PACKAGE TRUE)
-  find_package(catkin QUIET
-    NO_POLICY_SCOPE
-    PATHS ${catkin_search_path}
-    NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
-  unset(CATKIN_TOPLEVEL_FIND_PACKAGE)
-
-  if(NOT catkin_FOUND)
-    message(FATAL_ERROR "find_package(catkin) failed. catkin was neither found in the workspace nor in the CMAKE_PREFIX_PATH. One reason may be that no ROS setup.sh was sourced before.")
-  endif()
-endif()
-
-catkin_workspace()
+ament_package()

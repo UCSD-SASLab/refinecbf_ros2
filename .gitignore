@@ -1,3 +1,6 @@
 *.npy
 **/*.json
 .vscode/
+__pycache__/
+*.pyc
+
