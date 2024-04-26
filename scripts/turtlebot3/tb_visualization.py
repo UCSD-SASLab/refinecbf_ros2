@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import rospy
+import rclpy
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, Pose
 from std_msgs.msg import ColorRGBA
@@ -105,7 +105,7 @@ class TurtlebotVisualization(Visualization):
 
         marker.id = sdf_marker_id
 
-        marker.points = [Point(x,y,0.0) for x,y in points]
+        marker.points = [Point(x=x, y=y, z=0.0) for x,y in points]
 
         return marker
     
@@ -125,7 +125,7 @@ class TurtlebotVisualization(Visualization):
 
         marker.id = vf_marker_id
 
-        marker.points = [Point(x,y,0.0) for x,y in points]
+        marker.points = [Point(x=x, y=y, z=0.0) for x,y in points]
 
         return marker
     
@@ -166,7 +166,11 @@ class TurtlebotVisualization(Visualization):
         return array_points
 
 
-if __name__ == '__main__':
-    rospy.init_node('tb_visualization', anonymous=True)
-    TurtlebotVisualization()
-    rospy.spin()
+def main(args=None):
+    rclpy.init(args=args)
+    rclpy.spin(TurtlebotVisualization())
+    rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

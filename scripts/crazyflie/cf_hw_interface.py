@@ -43,7 +43,6 @@ class CrazyflieInterface(BaseInterface):
             ],
         )
         self.in_flight_flag_topic = self.get_parameter("topics.in_flight").value
-        self.external_setpoint_topic = self.get_parameter("topics.external_setpoint").value
         self.is_in_flight = False
 
         takeoff_service = self.get_parameter("services.takeoff").value
@@ -95,10 +94,6 @@ class CrazyflieInterface(BaseInterface):
         self.negate_yaw = -1 if backend == "sim" else 1  # TODO: Temporary hack to fix
 
         self.init_subscribers()
-
-    def init_subscribers(self):
-        super().init_subscribers()
-        # self.external_setpoint_sub = self.create_subscription(PositionVelocityStateStamped, self.external_setpoint_topic, self.callback_setpoint, 10)
 
     def handle_high_level_command(self, request, response):
         if request.command == "start":
@@ -219,13 +214,6 @@ class CrazyflieInterface(BaseInterface):
         self.get_logger().info("In flight flag toggled")
         self.is_in_flight = not self.is_in_flight
         self.destroy_timer(self.takeoff_timer)
-
-    def override_nominal_control(self):
-        curr_time = self.get_clock().now().nanoseconds
-        return (
-            self.external_setpoint is not None
-            and (curr_time - self.external_setpoint_ts) <= self.external_setpoint_time_buffer
-        )
 
 
 def main(args=None):
