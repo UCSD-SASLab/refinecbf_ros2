@@ -1,57 +1,84 @@
 #!/usr/bin/env python3
 
-import rospy
+import rclpy
 import numpy as np
-import hj_reachability as hj
-import jax.numpy as jnp
-from std_msgs.msg import Empty
 
-from refinecbf_ros.config import Config
+# from refinecbf_ros2.config import Config
+import sys, os
 
-# add the parent of this folder tot he path
-import sys
-import os
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from template.nominal_controller import NominalController
+sys.path.append(os.path.join(os.path.dirname(__file__)))
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+from nominal_controller import NominalController
+from refinecbf_ros2.srv import HighLevelCommand
+from config import Config
 
 
 class CrazyflieNominalControl(NominalController):
     def __init__(self):
-        super().__init__()
-        self.config = Config(hj_setup=False)
+        super().__init__("cf_nominal_control")
+        self.config = Config(self, hj_setup=False)
+        self.declare_parameters(
+            "",
+            [
+                ("services.target_position", rclpy.Parameter.Type.STRING),
+            ],
+        )
         self.dynamics = self.config.dynamics
         # Control bounds
-        self.max_thrust = rospy.get_param("~control/max_thrust")
-        self.min_thrust = rospy.get_param("~control/min_thrust")
-        self.max_roll = rospy.get_param("~control/max_roll")
-        self.max_pitch = rospy.get_param("~control/max_pitch")
+
+        self.declare_parameters(
+            "",
+            [
+                ("limits.max_thrust", self.control_config["limits"]["max_thrust"]),
+                ("limits.min_thrust", self.control_config["limits"]["min_thrust"]),
+                ("limits.max_roll", self.control_config["limits"]["max_roll"]),
+                ("limits.max_pitch", self.control_config["limits"]["max_pitch"]),
+            ],
+        )
+        self.max_thrust = self.get_parameter("limits.max_thrust").value
+        self.min_thrust = self.get_parameter("limits.min_thrust").value
+        self.max_roll = self.get_parameter("limits.max_roll").value
+        self.max_pitch = self.get_parameter("limits.max_pitch").value
         self.safety_controls_idis = self.config.safety_controls
 
-        self.target = jnp.array(rospy.get_param("/ctr/nominal/goal/coordinates"))
-        self.state = np.zeros_like(self.target)
-        # assert len(self.target) == self.dynamics.n_dims  # TODO: Different check needed
+        self.target_position_topic = self.get_parameter("services.target_position").value
+        self.target_position_service = self.create_service(
+            HighLevelCommand, self.target_position_topic, self.target_position_callback
+        )
 
-        utarget_file = rospy.get_param("~LQR/u_ref_file")
-        self.u_target = np.loadtxt(utarget_file)
-        # assert len(self.u_target) == self.dynamics.control_dims  # TODO: Different check needed
+        self.target = self.control_config["nominal"]["goal"]["coordinates"]
+        self.gain = self.control_config["nominal"]["goal"]["gain"]
+        self.u_target = self.control_config["nominal"]["goal"]["u_ref"]
+        self.state = np.zeros_like(self.target)
 
         # Initialize parameters
-        self.gain = np.array(rospy.get_param("/ctr/nominal/goal/gain"))
-        # assert self.gain.shape == (self.dynamics.control_dims, self.dynamics.n_dims)  # TODO: Diff check needed
         umin = np.array([-self.max_roll, -self.max_pitch, -np.inf, self.min_thrust])
         umax = np.array([self.max_roll, self.max_pitch, np.inf, self.max_thrust])
         umin[self.safety_controls_idis] = np.array(self.config.control_space["lo"])
         umax[self.safety_controls_idis] = np.array(self.config.control_space["hi"])
         self.controller = lambda x, t: np.clip(self.u_target + self.gain @ (x - self.target), umin, umax)
+        self.start_controller()
+
+    def target_position_callback(self, request, response):
+        value = np.array(request.position.value)
+        self.get_logger().info(f"New target position: {value}")
+        self.target[:3] = value
+        self.get_logger().info(f"New target position: {self.target[:3]}")
+        response.response = "Success"
+        return response
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    controller = CrazyflieNominalControl()
+
+    try:
+        while rclpy.ok():
+            rclpy.spin(controller)
+    finally:
+        controller.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":
-    rospy.init_node("cf_nominal_control_node")
-    Controller = CrazyflieNominalControl()
-
-    rate = rospy.Rate(rospy.get_param("/ctr/nominal/frequency"))
-
-    while not rospy.is_shutdown():
-        Controller.publish_control()
-        rate.sleep()
+    main()

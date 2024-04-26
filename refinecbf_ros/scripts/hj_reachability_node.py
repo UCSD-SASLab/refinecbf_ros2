@@ -1,25 +1,24 @@
 #!/usr/bin/env python3
 
-import rospy
+import rclpy
+from rclpy.node import Node
 import numpy as np
 import hj_reachability as hj
 import jax.numpy as jnp
-from threading import Lock
-from refinecbf_ros.msg import ValueFunctionMsg, HiLoArray
-from refinecbf_ros.config import Config
-from refinecbf_ros.config import QuadraticCBF
-from refine_cbfs import HJControlAffineDynamics
-from std_msgs.msg import Bool
-from refine_cbfs import (
-    HJControlAffineDynamics,
-    TabularControlAffineCBF,
-    TabularTVControlAffineCBF,
-    utils,
-)
+from refinecbf_ros2.msg import ValueFunctionMsg, HiLoArray
+
+# Ensure the following imports are compatible with ROS2 or appropriately adapted
+from config import Config, QuadraticCBF
+from refine_cbfs import HJControlAffineDynamics, TabularControlAffineCBF
+from example_interfaces.msg import Bool
 import os
+import threading
+import time
+from ament_index_python.packages import get_package_share_directory
+import yaml
 
 
-class HJReachabilityNode:
+class HJReachabilityNode(Node):
     """
     HJReachabilityNode is a ROS node that computes the Hamilton-Jacobi reachability for a robot.
 
@@ -38,7 +37,8 @@ class HJReachabilityNode:
         and a publisher for the value function. It also initializes the Hamilton-Jacobi dynamics and the value function.
         """
         # Load configuration
-        config = Config(hj_setup=True)
+        super().__init__("hj_reachability_node")
+        config = Config(self, hj_setup=True)
         # Initialize dynamics, grid, and Hamilton-Jacobi dynamics
         self.dynamics = config.dynamics
         self.grid = config.grid
@@ -46,40 +46,71 @@ class HJReachabilityNode:
         self.control_space = self.hj_dynamics.control_space
         self.disturbance_space = self.hj_dynamics.disturbance_space
 
-        self.vf_update_method = rospy.get_param("~vf_update_method")
+        # Topics (parameters)
+        self.declare_parameters(
+            "",
+            [
+                ("topics.sdf_update", rclpy.Parameter.Type.STRING),
+                ("topics.disturbance_update", rclpy.Parameter.Type.STRING),
+                ("topics.actuation_update", rclpy.Parameter.Type.STRING),
+                ("topics.vf_update", rclpy.Parameter.Type.STRING),
+            ],
+        )
 
-        self.vf_update_accuracy = rospy.get_param("~vf_update_accuracy", "medium")
+        self.declare_parameter("vf_update_method", "pubsub")
+        self.declare_parameter("vf_update_accuracy", "high")
+        self.declare_parameter("vf_initialization_method", "sdf")
+        self.declare_parameter("initial_vf_file", "None")
+        self.declare_parameter("cbf_params", "None")
+        self.declare_parameter("update_vf_online", True)
+
+        self.vf_update_method = self.get_parameter("vf_update_method").value
+        self.vf_update_accuracy = self.get_parameter("vf_update_accuracy").value
         # Initialize a lock for thread-safe value function updates
-        self.vf_lock = Lock()
         # Get initial safe space and setup solver
-        sdf_update_topic = rospy.get_param("~topics/sdf_update")
+        self.sdf_update_topic = self.get_parameter("topics.sdf_update").value
+        self.sdf_available = False
 
         if self.vf_update_method == "pubsub":
-            self.sdf_values = np.array(rospy.wait_for_message(sdf_update_topic, ValueFunctionMsg).vf).reshape(
-                self.grid.shape
+            self.sdf_subscriber = self.create_subscription(
+                ValueFunctionMsg, self.sdf_update_topic, self.callback_sdf_update_pubsub, 10
             )
         elif self.vf_update_method == "file":
-            sdf_received = rospy.wait_for_message(sdf_update_topic, Bool).data
-            self.sdf_values = np.array(np.load("./sdf.npy")).reshape(self.grid.shape)
+            self.sdf_subscriber = self.create_subscription(
+                Bool, self.sdf_update_topic, self.callback_sdf_update_file, 10
+            )
         else:
-            raise NotImplementedError("{} is not a valid vf update method".format(self.vf_update_method))
+            raise NotImplementedError(f"{self.vf_update_method} is not a valid vf update method")
+
+        # Wait while not sdf update topic received
+        self.first_message_received = threading.Event()
+        self.spin_thread = threading.Thread(target=self.spin)
+        self.spin_thread.start()
+        self.first_message_received.wait()
+        # self.first_message_received.wait()
 
         self.brt = lambda sdf_values: lambda t, x: jnp.minimum(x, sdf_values)
         self.solver_settings = hj.SolverSettings.with_accuracy(
             self.vf_update_accuracy, value_postprocessor=self.brt(self.sdf_values)
         )
 
-        self.vf_initialization_method = rospy.get_param("~vf_initialization_method")
+        self.vf_initialization_method = self.get_parameter("vf_initialization_method").value
         if self.vf_initialization_method == "sdf":
             self.vf = self.sdf_values.copy()
         elif self.vf_initialization_method == "cbf":
-            cbf_params = rospy.get_param("/cbf")["Parameters"]
-            original_cbf = QuadraticCBF(self.dynamics, cbf_params, test=False)
+            cbf_parameter_file = self.get_parameter("CBF_parameter_file").value
+            import yaml
+
+            package_dir = get_package_share_directory("refinecbf_ros2")
+            with open(os.path.join(package_dir, "config", cbf_parameter_file), "r") as f:
+                cbf_params = yaml.safe_load(f)
+
+            original_cbf = QuadraticCBF(self.dynamics, cbf_params["Parameters"], test=False)
             tabular_cbf = TabularControlAffineCBF(self.dynamics, params={}, test=False, grid=self.grid)
             tabular_cbf.tabularize_cbf(original_cbf)
             self.vf = tabular_cbf.vf_table.copy()
         elif self.vf_initialization_method == "file":
-            file_path = rospy.get_param("/vf_file")
+            file_path = self.get_parameter("initial_vf_file").value
             self.vf = np.load(file_path)
             if self.vf.ndim == self.grid.ndim + 1:
                 self.vf = self.vf[-1]
@@ -88,48 +119,50 @@ class HJReachabilityNode:
             raise NotImplementedError("{} is not a valid initialization method".format(self.vf_initialization_method))
 
         # Set up value function publisher
-        self.vf_topic = rospy.get_param("~topics/vf_update")
+        self.vf_topic = self.get_parameter("topics.vf_update").value
 
-        if self.vf_update_method == "pubsub":
-            self.vf_pub = rospy.Publisher(self.vf_topic, ValueFunctionMsg, queue_size=1)
-        else:  # self.vf_update_method == "file":
-            self.vf_pub = rospy.Publisher(self.vf_topic, Bool, queue_size=1)
-
-        self.update_vf_flag = rospy.get_param("~update_vf_online")
+        # Log a warning if the update flag is not set
+        self.update_vf_flag = self.get_parameter("update_vf_online").value
         if not self.update_vf_flag:
-            rospy.logwarn("Value function is not being updated")
+            self.get_logger().warn("Value function is not being updated")
 
-        # Set up subscribers for disturbance, actuation, and obstacle updates
-        disturbance_update_topic = rospy.get_param("~topics/disturbance_update")
-        self.disturbance_update_sub = rospy.Subscriber(
-            disturbance_update_topic, HiLoArray, self.callback_disturbance_update
+        # Publishers depending on the update method
+        if self.vf_update_method == "pubsub":
+            self.vf_pub = self.create_publisher(ValueFunctionMsg, self.vf_topic, 10)
+        else:  # self.vf_update_method == "file"
+            self.vf_pub = self.create_publisher(Bool, self.vf_topic, 10)
+
+        # Subscribers setup
+        disturbance_update_topic = self.get_parameter("topics.disturbance_update").value
+        self.disturbance_update_sub = self.create_subscription(
+            HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 10
         )
 
-        actuation_update_topic = rospy.get_param("~topics/actuation_update")
-        self.actuation_update_sub = rospy.Subscriber(actuation_update_topic, HiLoArray, self.callback_actuation_update)
-
-        if self.vf_update_method == "pubsub":
-            self.sdf_update_sub = rospy.Subscriber(
-                sdf_update_topic, ValueFunctionMsg, self.callback_sdf_update_pubsub
-            )
-        else:  # self.vf_update_method == "file"
-            self.sdf_update_sub = rospy.Subscriber(
-                sdf_update_topic, Bool, self.callback_sdf_update_file
-            )
+        actuation_update_topic = self.get_parameter("topics.actuation_update").value
+        self.actuation_update_sub = self.create_subscription(
+            HiLoArray, actuation_update_topic, self.callback_actuation_update, 10
+        )
 
         # Start updating the value function
         self.publish_initial_vf()
-        self.update_vf()  # This keeps spinning
+        self.update_vf()  # This method spins indefinitely
+
+    def spin(self):
+        rclpy.spin(self)
 
     def publish_initial_vf(self):
-        while self.vf_pub.get_num_connections() != 2:
-            rospy.loginfo("HJR node: Waiting for subscribers to connect")
-            rospy.sleep(1)
+        # ROS2 uses a slightly different API for waiting for subscribers
+        while self.vf_pub.get_subscription_count() < 2:
+            self.get_logger().info("HJR node: Waiting for subscribers to connect")
+            time.sleep(1)
+
         if self.vf_update_method == "pubsub":
-            self.vf_pub.publish(ValueFunctionMsg(vf=self.vf.flatten()))
+            msg = ValueFunctionMsg()
+            msg.vf = self.vf.flatten().tolist()  # Ensure data is in a suitable format
+            self.vf_pub.publish(msg)
         else:  # self.vf_update_method == "file"
-            np.save("./vf.npy", self.vf)
-            self.vf_pub.publish(Bool(True))
+            np.save("./vf.npy", self.vf)  # Save the value function to a file
+            self.vf_pub.publish(Bool(data=True))  # Publish a Bool message indicating completion
 
     def callback_disturbance_update(self, msg):
         """
@@ -140,11 +173,10 @@ class HJReachabilityNode:
 
         This method updates the disturbance space and the dynamics.
         """
-        with self.vf_lock: 
-            max_disturbance = msg.hi
-            min_disturbance = msg.lo
-            self.disturbance_space = hj.sets.Box(lo=jnp.array(min_disturbance), hi=jnp.array(max_disturbance))
-            self.update_dynamics()  # FIXME:Check whether this is required or happens automatically
+        max_disturbance = msg.hi
+        min_disturbance = msg.lo
+        self.disturbance_space = hj.sets.Box(lo=jnp.array(min_disturbance), hi=jnp.array(max_disturbance))
+        self.update_dynamics()  # FIXME:Check whether this is required or happens automatically
 
     def callback_actuation_update(self, msg):
         """
@@ -155,11 +187,10 @@ class HJReachabilityNode:
 
         This method updates the control space and the dynamics.
         """
-        with self.vf_lock:
-            max_control = msg.hi
-            min_control = msg.lo
-            self.control_space = hj.sets.Box(lo=jnp.array(min_control), hi=jnp.array(max_control))
-            self.update_dynamics()  # FIXME:Check whether this is required or happens automatically
+        max_control = msg.hi
+        min_control = msg.lo
+        self.control_space = hj.sets.Box(lo=jnp.array(min_control), hi=jnp.array(max_control))
+        self.update_dynamics()  # FIXME:Check whether this is required or happens automatically
 
     def callback_sdf_update_pubsub(self, msg):
         """
@@ -170,21 +201,26 @@ class HJReachabilityNode:
 
         This method updates the obstacle and the solver settings.
         """
-        with self.vf_lock:
-            self.sdf_values = np.array(msg.vf).reshape(self.grid.shape)
+        self.get_logger().info("SDF update received")
+        self.sdf_values = jnp.array(msg.vf).reshape(self.grid.shape)
+        if not self.first_message_received.is_set():
+            self.first_message_received.set()
+        else:
             self.solver_settings = hj.SolverSettings.with_accuracy(
                 self.vf_update_accuracy, value_postprocessor=self.brt(self.sdf_values)
             )
 
     def callback_sdf_update_file(self, msg):
-        with self.vf_lock:
-            if not msg.data:
-                return
-            self.sdf_values = np.array(np.load("./sdf.npy")).reshape(self.grid.shape)
+        self.get_logger().info("SDF update received")
+        if not msg.data:
+            return
+        self.sdf_values = jnp.array(jnp.load("./sdf.npy")).reshape(self.grid.shape)
+        if not self.first_message_received.is_set():
+            self.first_message_received.set()
+        else:
             self.solver_settings = hj.SolverSettings.with_accuracy(
                 self.vf_update_accuracy, value_postprocessor=self.brt(self.sdf_values)
             )
-            rospy.loginfo("Processed SDF update")
 
     def update_dynamics(self):
         """
@@ -200,32 +236,36 @@ class HJReachabilityNode:
         """
         Continuously updates the value function and publishes it as long as the node is running and the update flag is set.
         """
-        while not rospy.is_shutdown():
+        while rclpy.ok():
             if self.update_vf_flag:
-                with self.vf_lock:
-                    rospy.loginfo("Share of safe cells: {:.3f}".format(np.sum(self.vf >= 0) / self.vf.size))
-                    time_now = rospy.Time.now().to_sec()
-                    new_values = hj.step(
-                        self.solver_settings,
-                        self.hj_dynamics,
-                        self.grid,
-                        0.0,
-                        self.vf.copy(),
-                        -0.1,
-                        progress_bar=False,
-                    )
-                    rospy.loginfo("Time taken to calculate vf: {:.2f}".format(rospy.Time.now().to_sec() - time_now))
-                    self.vf = new_values
-                if self.vf_update_method == "pubsub":
-                    self.vf_pub.publish(ValueFunctionMsg(np.array(self.vf).flatten()))
-                else:  # self.vf_update_method == "file"
-                    np.save("./vf.npy", self.vf)
-                    self.vf_pub.publish(Bool(True))
+                self.get_logger().info(f"Share of safe cells: {np.sum(self.vf >= 0) / self.vf.size:.3f}")
+                time_now = self.get_clock().now().seconds_nanoseconds()[0]
+                new_values = hj.step(
+                    self.solver_settings,
+                    self.hj_dynamics,
+                    self.grid,
+                    0.0,
+                    self.vf.copy(),
+                    -0.1,
+                    progress_bar=False,
+                )
+                elapsed_time = self.get_clock().now().seconds_nanoseconds()[0] - time_now
+                self.get_logger().info(f"Time taken to calculate vf: {elapsed_time:.2f}")
+                self.vf = new_values
+            if self.vf_update_method == "pubsub":
+                self.vf_pub.publish(ValueFunctionMsg(vf=self.vf.flatten().tolist()))
+            else:  # self.vf_update_method == "file"
+                np.save("./vf.npy", self.vf)
+                self.vf_pub.publish(Bool(data=True))
 
-            rospy.sleep(0.05)  # To make sure that subscribers can run
 
+def main(args=None):
+    rclpy.init(args=args)
+    hj_reachability_node = HJReachabilityNode()
+    rclpy.spin(hj_reachability_node)
+    hj_reachability_node.destroy_node()
+    rclpy.shutdown()
 
 
 if __name__ == "__main__":
-    rospy.init_node("hj_reachability_node")
-    HJReachabilityNode()
+    main()

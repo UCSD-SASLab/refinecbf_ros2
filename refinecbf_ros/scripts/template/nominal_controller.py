@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 
-import rospy
+import rclpy
+from rclpy.node import Node
 import numpy as np
-from refinecbf_ros.msg import Array
-from std_msgs.msg import Bool
+from refinecbf_ros2.msg import Array
+from example_interfaces.msg import Bool
+from ament_index_python import get_package_share_directory
+import os
+import yaml
 
 
-class NominalController:
+class NominalController(Node):
     """
     This class determines the non-safe (aka nominal) control of a robot using hj_reachability in refineCBF.
     External control inputs (keyboard, joystick, etc.) by default override the nominal control from the autonomy stack if they have been published and/or changed recently.
@@ -17,31 +21,51 @@ class NominalController:
 
     Publishers:
     - control_pub (~topics/nominal_control): Publishes the nominal control.
-
     """
 
-    def __init__(self):
-        """
-        Initialize the NominalController.
-        """
+    def __init__(self, node_name):
+        super().__init__(node_name)
         # Get topics from parameters
-        state_topic = rospy.get_param("~topics/state")
-        external_control_topic = rospy.get_param("~topics/external_control")
-        nominal_control_topic = rospy.get_param("~topics/nominal_control")
-        publish_ext_control_flag_topic = rospy.get_param("~topics/publish_external_control_flag")
+        self.declare_parameters(
+            "",
+            [
+                ("topics.cbf_state", rclpy.Parameter.Type.STRING),
+                ("topics.robot_external_control", rclpy.Parameter.Type.STRING),
+                ("topics.cbf_nominal_control", rclpy.Parameter.Type.STRING),
+                ("topics.publish_external_control_flag", rclpy.Parameter.Type.STRING),
+            ],
+        )
+        state_topic = self.get_parameter("topics.cbf_state").value
+        external_control_topic = self.get_parameter("topics.robot_external_control").value
+        nominal_control_topic = self.get_parameter("topics.cbf_nominal_control").value
+        publish_ext_control_flag_topic = self.get_parameter("topics.publish_external_control_flag").value
 
         # Initialize subscribers and publishers
-        self.state_sub = rospy.Subscriber(state_topic, Array, self.callback_state)
-        self.control_pub = rospy.Publisher(nominal_control_topic, Array, queue_size=1)
-        self.external_control_sub = rospy.Subscriber(external_control_topic, Array, self.callback_external_control)
-        self.publish_ext_control_flag_pub = rospy.Publisher(publish_ext_control_flag_topic, Bool, queue_size=1)
+        self.state_sub = self.create_subscription(Array, state_topic, self.callback_state, 10)
+        self.control_pub = self.create_publisher(Array, nominal_control_topic, 10)
+        self.external_control_sub = self.create_subscription(
+            Array, external_control_topic, self.callback_external_control, 10
+        )
+        self.publish_ext_control_flag_pub = self.create_publisher(Bool, publish_ext_control_flag_topic, 10)
 
         # Initialize control variables
         self.external_control = None
         self.new_external_control = False
 
+        self.declare_parameter("control_config_file", rclpy.Parameter.Type.STRING)
+        control_config_file = self.get_parameter("control_config_file").value
+        with open(os.path.join(get_package_share_directory("refinecbf_ros2"), "config", control_config_file), "r") as f:
+            self.control_config = yaml.safe_load(f)
+
+        self.declare_parameter("controller_rate", self.control_config["nominal"]["frequency"])
+        self.controller_rate = self.get_parameter("controller_rate").value
         # Initialize Controller
-        self.controller = None
+        self.controller = None  # This should be defined or linked to the actual control logic.
+
+    def start_controller(self):
+
+        # Initialize timer for controller
+        self.create_timer(1 / self.controller_rate, self.publish_control)
 
     def callback_state(self, state_array_msg):
         """
@@ -79,25 +103,22 @@ class NominalController:
 
         """
         if self.new_external_control:
-            self.publish_ext_control_flag_pub.publish(True)
+            self.publish_ext_control_flag_pub.publish(Bool(data=True))
             self.new_external_control = False
             return self.external_control
         else:
-            self.publish_ext_control_flag_pub.publish(False)
+            self.publish_ext_control_flag_pub.publish(Bool(data=False))
             return control
-
 
     def publish_control(self):
         """
         Publishes the prioritized control.
-
-        This method gets the nominal control, prioritizes it with the external control input,
-        and publishes the result.
         """
         # Get nominal control
-        control = self.controller(self.state, rospy.get_time()).squeeze()
+        control = self.controller(self.state, self.get_clock().now().nanoseconds)  # Assuming controller is a callable
+        control = control.squeeze()
 
-        # Prioritize between external input (e.g. joystick) and nominal control
+        # Prioritize between external input (e.g., joystick) and nominal control
         control = self.prioritize_control(control)
 
         # Create control message

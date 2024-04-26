@@ -1,45 +1,62 @@
 #!/usr/bin/env python3
 
-import rospy
+import rclpy
+from rclpy.node import Node
 import numpy as np
-from refinecbf_ros.msg import Array, HiLoArray
-from refinecbf_ros.config import Config
+from refinecbf_ros2.msg import Array, HiLoArray
+from config import Config
 
 
-class DisturbanceNode:
+class DisturbanceNode(Node):
     """
     This node is responsible for generating disturbances for simulator purposes. Hardware does not have this issue.
     """
 
     def __init__(self):
-        config = Config(hj_setup=False)
-        disturbance_topic = rospy.get_param("~topics/disturbance")
-        self.pub_disturbance = rospy.Publisher(disturbance_topic, Array, queue_size=1)
-
-        disturbance_update_topic = rospy.get_param("~topics/disturbance_update")
-        self.disturbance_update_sub = rospy.Subscriber(
-            disturbance_update_topic, HiLoArray, self.callback_disturbance_update
+        super().__init__("disturbance_node")
+        config = Config(self, hj_setup=True)
+        self.declare_parameters(
+            "",
+            [
+                ("topics.simulated_disturbance", rclpy.Parameter.Type.STRING),
+                ("topics.disturbance_update", rclpy.Parameter.Type.STRING),
+                ("topics.cbf_state", rclpy.Parameter.Type.STRING),
+            ],
         )
 
+        self.declare_parameters("", [("beta_skew", 1.0), ("seed", 0), ("rate", 20)])
+
+        disturbance_topic = self.get_parameter("topics.simulated_disturbance").value
+        disturbance_update_topic = self.get_parameter("topics.disturbance_update").value
+        state_topic = self.get_parameter("topics.cbf_state").value
+
+        self.pub_disturbance = self.create_publisher(Array, disturbance_topic, 10)
+
+        self.disturbance_update_sub = self.create_subscription(
+            HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 10
+        )
+
+        self.state_sub = self.create_subscription(Array, state_topic, self.callback_state, 10)
         self.disturbance_lo = np.array(config.disturbance_space["lo"])
         self.disturbance_hi = np.array(config.disturbance_space["hi"])
 
         self.dynamics = config.dynamics
-        self.state_topic = rospy.get_param("~topics/state", "/state_array")
-        self.state_sub = rospy.Subscriber(self.state_topic, Array, self.callback_state)
         self.state = None
         self.state_initialized = False
 
-        self.beta_skew = rospy.get_param("~beta_skew", 1.0)  # Defaults to a uniform distribution
-        self.seed = 0
+        self.beta_skew = self.get_parameter("beta_skew").value
+        self.seed = self.get_parameter("seed").value
         self.random_state = np.random.default_rng(seed=self.seed)
-        self.rate = rospy.get_param("~rate", 20)
-        self.rospy_rate = rospy.Rate(self.rate)
+        self.rate = self.get_parameter("rate").value
 
-        # Wait for the state to be initialized
-        while not rospy.is_shutdown() and not self.state_initialized:
-            self.rospy_rate.sleep()
-        self.run()
+        self.timer = self.create_timer(1.0 / self.rate, self.run)  # Triggers the run method at the specified rate
+
+    def run(self):
+        if self.state_initialized:
+            per_state_disturbance_msg = Array()
+            per_state_disturbance = self.compute_disturbance()
+            per_state_disturbance_msg.value = per_state_disturbance.tolist()
+            self.pub_disturbance.publish(per_state_disturbance_msg)
 
     def compute_disturbance(self):
         disturbance = (
@@ -50,23 +67,22 @@ class DisturbanceNode:
         per_state_disturbance = self.dynamics.disturbance_matrix(self.state, 0.0) @ disturbance
         return per_state_disturbance
 
-    def run(self):
-        while not rospy.is_shutdown():
-            per_state_disturbance_msg = Array()
-            per_state_disturbance = self.compute_disturbance()
-            per_state_disturbance_msg.value = per_state_disturbance.tolist()
-            self.pub_disturbance.publish(per_state_disturbance_msg)
-            self.rospy_rate.sleep()
-
     def callback_disturbance_update(self, msg):
         self.disturbance_lo = np.array(msg.lo)
         self.disturbance_hi = np.array(msg.hi)
 
-    def callback_state(self, state_est_msg):
-        self.state = np.array(state_est_msg.value)
+    def callback_state(self, msg):
+        self.state = np.array(msg.value)
         self.state_initialized = True
 
 
+def main(args=None):
+    rclpy.init(args=args)
+    disturbance_node = DisturbanceNode()
+    rclpy.spin(disturbance_node)
+    disturbance_node.destroy_node()
+    rclpy.shutdown()
+
+
 if __name__ == "__main__":
-    rospy.init_node("disturbance_node")
-    safety_filter = DisturbanceNode()
+    main()
