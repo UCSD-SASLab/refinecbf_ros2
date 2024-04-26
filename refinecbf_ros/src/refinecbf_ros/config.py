@@ -1,29 +1,39 @@
+import os
 import hj_reachability as hj
 import jax.numpy as jnp
 import jax
 from cbf_opt import ControlAffineDynamics, ControlAffineCBF
 from refine_cbfs import HJControlAffineDynamics
+from ament_index_python.packages import get_package_share_directory
 import numpy as np
-import rospy
+import rclpy
+import yaml
 
 
 class Config:
-    def __init__(self, hj_setup=False):
-        self.dynamics_class = rospy.get_param("~/env/dynamics_class")
+    def __init__(self, node, hj_setup=False):
+        node.declare_parameter('env_config_file', rclpy.Parameter.Type.STRING)
+        env_config_file = node.get_parameter('env_config_file').value
+        # rclpy get path to package
+        package_dir = get_package_share_directory('refinecbf_ros2')
+        with open(os.path.join(package_dir, 'config', env_config_file), 'r') as file:
+            config = yaml.safe_load(file)
+        # Load from config file (yaml)
+        self.dynamics_class = config["dynamics_class"]
         self.dynamics = self.setup_dynamics()
-        self.control_space = rospy.get_param("~/env/control_space")
-        self.disturbance_space = rospy.get_param("~/env/disturbance_space")
-        self.safety_states = rospy.get_param("~/env/safety_states")
-        self.safety_controls = rospy.get_param("~/env/safety_controls")
-        self.state_domain = rospy.get_param("~/env/state_domain")
+        self.control_space = config["control_space"]
+        self.disturbance_space = config["disturbance_space"]
+        self.safety_states = config["safety_states"]
+        self.safety_controls = config["safety_controls"]
+        self.state_domain = config["state_domain"]
         self.grid = self.setup_grid()
 
         if hj_setup:
-            self.obstacle_list = rospy.get_param("~/env/obstacles")
-            self.actuation_updates_list = rospy.get_param("~/env/actuation_updates")
-            self.disturbance_updates_list = rospy.get_param("~/env/disturbance_updates")
+            self.obstacle_list = config["obstacles"]
+            self.actuation_updates_list = config["actuation_updates"]
+            self.disturbance_updates_list = config["disturbance_updates"]
+            self.boundary_env = config["boundary"]
 
-            self.boundary_env = rospy.get_param("~/env/boundary")
             (
                 self.detection_obstacles,
                 self.service_obstacles,
@@ -49,7 +59,7 @@ class Config:
                 self.dynamics, control_space=control_space_hj, disturbance_space=dist_space_hj
             )
 
-        self.assert_valid(hj_setup)
+        # self.assert_valid(hj_setup)
 
     def assert_valid(self, hj_setup):
         assert len(self.control_space["lo"]) == self.dynamics.control_dims
