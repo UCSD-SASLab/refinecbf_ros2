@@ -143,7 +143,6 @@ def generate_launch_description():
                     launch_arguments={
                         'backend': LaunchConfiguration('backend'),
                         'use_sim_time': PythonExpression(["'", LaunchConfiguration('backend'), "' == 'sim'"]),
-                        'log_level': LaunchConfiguration('log_level')
                     }.items(),
                 )
             ]
