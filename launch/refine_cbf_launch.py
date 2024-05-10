@@ -35,7 +35,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'exp',
             description='Which experiment to run'),
-
+        DeclareLaunchArgument(
+            'use_sim_time', 
+            description='Use simulation (Gazebo) clock if true'),
 
         Node(
             package='refinecbf_ros2',
@@ -48,8 +50,10 @@ def generate_launch_description():
                  'vf_update_method': LaunchConfiguration('vf_update_method'),
                  'robot': LaunchConfiguration('robot'),
                  'exp': LaunchConfiguration('exp'),
+                 'use_sim_time': LaunchConfiguration('use_sim_time'),
                  }
             ]),
+
         Node(
             package='refinecbf_ros2',
             executable='obstacle_node.py',
@@ -58,6 +62,7 @@ def generate_launch_description():
                         {'robot': LaunchConfiguration('robot'),
                          'vf_update_method': LaunchConfiguration('vf_update_method'),
                          'exp': LaunchConfiguration('exp'),
+                         'use_sim_time': LaunchConfiguration('use_sim_time'),
                          },
                         ]
         ),
@@ -74,6 +79,7 @@ def generate_launch_description():
                  'vf_update_method': LaunchConfiguration('vf_update_method'),
                  'robot': LaunchConfiguration('robot'),
                  'exp': LaunchConfiguration('exp'),
+                 'use_sim_time': LaunchConfiguration('use_sim_time'),
                 }
                 
             ],
@@ -88,6 +94,7 @@ def generate_launch_description():
                 topics_config,
                 {'robot': LaunchConfiguration('robot'),
                  'exp': LaunchConfiguration('exp'),
+                 'use_sim_time': LaunchConfiguration('use_sim_time'),
                 }
             ],
         )
