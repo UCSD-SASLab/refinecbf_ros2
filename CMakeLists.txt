@@ -31,6 +31,7 @@ install(PROGRAMS
   scripts/modify_environment.py
   scripts/template/nominal_controller.py
   scripts/config.py
+  scripts/utils.py
   scripts/crazyflie/cf_nominal_controller.py
   scripts/crazyflie/cf_hw_interface.py
   scripts/crazyflie/cf_visualization.py
