@@ -44,6 +44,11 @@ class CrazyflieInterface(BaseInterface):
         )
         self.in_flight_flag_topic = self.get_parameter("topics.in_flight").value
         self.is_in_flight = False
+        self.zero_control_out_msg = self.control_out_msg_type()
+        self.zero_control_out_msg.linear.x = 0.0
+        self.zero_control_out_msg.linear.y = 0.0
+        self.zero_control_out_msg.linear.z = 0.0
+        self.zero_control_out_msg.angular.z = 0.0
 
         takeoff_service = self.get_parameter("services.takeoff").value
         self.takeoffService = self.create_client(Takeoff, takeoff_service)
@@ -212,6 +217,10 @@ class CrazyflieInterface(BaseInterface):
 
     def toggle_in_flight_flag(self):
         self.get_logger().info("In flight flag toggled")
+        if not self.is_in_flight:
+            # Initialize low level control
+            for _ in range(5):  
+                self.safe_control_pub.publish(self.zero_control_out_msg)
         self.is_in_flight = not self.is_in_flight
         self.destroy_timer(self.takeoff_timer)
 
