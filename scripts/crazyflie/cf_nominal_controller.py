@@ -15,8 +15,7 @@ from config import Config
 
 class CrazyflieNominalControl(NominalController):
     def __init__(self):
-        super().__init__("cf_nominal_control")
-        self.config = Config(self, hj_setup=False)
+        super().__init__("cf_nominal_control", hj_setup=False)
         self.declare_parameters(
             "",
             [

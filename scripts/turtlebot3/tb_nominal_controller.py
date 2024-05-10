@@ -9,8 +9,8 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from turtlebot3.hjr_nominal_control import NominalControlHJ
-from turtlebot3.pd_nominal_control import NominalControlPD
+from hjr_nominal_control import NominalControlHJ
+from pd_nominal_control import NominalControlPD
 from refinecbf_ros2.srv import HighLevelCommand
 from nominal_controller import NominalController
 from config import Config
@@ -20,13 +20,14 @@ import yaml
 
 class TurtlebotNominalControl(NominalController):
     def __init__(self):
-        super().__init__("tb_nominal_control")
         self.declare_parameters(
             "",
             [
                 ("controller_type", self.control_config["controller_type"]),
             ],
         )
+        self.controller_type = self.get_parameter("controller_type").value
+        super().__init__("tb_nominal_control", hj_setup = (self.controller_type == "HJR"))
         self.max_vel = self.control_config["limits"]["max_vel"]
         self.min_vel = self.control_config["limits"]["min_vel"]
         self.max_omega = self.control_config["limits"]["max_omega"]
@@ -35,7 +36,6 @@ class TurtlebotNominalControl(NominalController):
         self.target = np.array(self.control_config["nominal"]["goal"]["coordinates"])
         self.controller_type = self.get_parameter("controller_type").value
         if self.controller_type == "HJR":
-            self.config = Config(self, hj_setup=True)
             self.declare_parameter("env_config_file", rclpy.Parameter.Type.STRING)
             env_config_file = self.get_parameter("env_config_file").value
             with open(os.path.join(get_package_share_directory("refinecbf_ros2"), "config", env_config_file), "r") as f:
@@ -63,7 +63,6 @@ class TurtlebotNominalControl(NominalController):
             self.controller = self.controller_prep.get_nominal_control
 
         elif self.controller_type == "PD":
-            self.config = Config(self, hj_setup=False)
             self.controller = NominalControlPD(target=self.target, umin=umin, umax=umax).get_nominal_control
 
         else:
