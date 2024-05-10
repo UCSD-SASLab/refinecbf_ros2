@@ -2,7 +2,7 @@ nominal:
   goal:
     coordinates:
       - 0.0
-      - 2.2
+      - 0.0
       - 1.3
       - 0.0
       - 0.0
@@ -17,15 +17,22 @@ nominal:
       - 0.0
       - 0.0
       - 0.0
-      - 10.5
-  frequency: 10.0
-cbf:
-  gamma: 0.2
-  slack: True
+      - 11.5
+  frequency: 50.0
 
 limits:
-  max_thrust: 62000
+  max_thrust: 62000  # (0-16) -> (0-65535), ~40000 is hover
   min_thrust: 16000
   max_roll: 30.0
   max_pitch: 30.0
   max_yawrate: 30.0
+
+asif:
+  gamma: 0.5
+  slack: False  # True doesn't work
+
+initial_cbf:
+  Parameters:
+    scaling: [2.0, 2.0, 1.0, 1.0]
+    center: [0.0, 0.0, 0.0, 0.0]
+    offset: 2.0

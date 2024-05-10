@@ -3,10 +3,8 @@
 import rclpy
 from rclpy.node import Node
 from refinecbf_ros2.msg import Array
-import os
-from ament_index_python.packages import get_package_share_directory
 from refinecbf_ros2.srv import HighLevelCommand
-import yaml
+from utils import load_parameters
 
 
 class BaseInterface(Node):
@@ -52,6 +50,9 @@ class BaseInterface(Node):
             ],
         )
 
+        self.declare_parameter("robot", rclpy.Parameter.Type.STRING)
+        self.declare_parameter("exp", rclpy.Parameter.Type.INTEGER)
+
         # Generate the update get parameters
         self.robot_state_topic = self.get_parameter("topics.robot_state").value
         cbf_state_topic = self.get_parameter("topics.cbf_state").value
@@ -69,11 +70,7 @@ class BaseInterface(Node):
         self.create_service(HighLevelCommand, high_level_command_srv, self.handle_high_level_command)
 
         # Check for disturbance topic
-        self.declare_parameter("env_config_file", rclpy.Parameter.Type.STRING)
-        env_config_file = self.get_parameter("env_config_file").value
-        package_dir = get_package_share_directory("refinecbf_ros2")
-        with open(os.path.join(package_dir, "config", env_config_file), "r") as f:
-            env_config = yaml.safe_load(f)
+        env_config = load_parameters(self.get_parameter("robot").value, self.get_parameter("exp").value, "env")
 
         self.number_disturbance_dims = env_config["disturbance_space"]["n_dims"]
         if not self.number_disturbance_dims == 0:

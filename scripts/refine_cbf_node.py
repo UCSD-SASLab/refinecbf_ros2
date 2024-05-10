@@ -8,7 +8,7 @@ from refine_cbfs import TabularControlAffineCBF
 from cbf_opt import ControlAffineASIF, SlackifiedControlAffineASIF
 from config import Config
 import numpy as np
-from ament_index_python.packages import get_package_share_directory
+from utils import load_parameters
 import yaml
 import os
 
@@ -46,11 +46,10 @@ class SafetyFilterNode(Node):
         self.declare_parameter("control_config_file", rclpy.Parameter.Type.STRING)
         control_config_file = self.get_parameter("control_config_file").value
 
-        with open(os.path.join(get_package_share_directory("refinecbf_ros2"), "config", control_config_file), "r") as f:
-            control_config = yaml.safe_load(f)
+        control_config = load_parameters(self.get_parameter("robot").value, self.get_parameter("exp").value, "control")
 
-        self.declare_parameter("control.cbf.gamma", control_config["cbf"]["gamma"])
-        self.declare_parameter("control.cbf.slack", control_config["cbf"]["slack"])
+        self.declare_parameter("control.asif.gamma", control_config["asif"]["gamma"])
+        self.declare_parameter("control.asif.slack", control_config["asif"]["slack"])
 
         # Subscribers
         self.vf_update_method = self.get_parameter("vf_update_method").value
@@ -67,8 +66,8 @@ class SafetyFilterNode(Node):
         self.state = None
 
         # CBF setup
-        gamma = self.get_parameter("control.cbf.gamma").value
-        slackify_safety_constraint = self.get_parameter("control.cbf.slack").value
+        gamma = self.get_parameter("control.asif.gamma").value
+        slackify_safety_constraint = self.get_parameter("control.asif.slack").value
 
         alpha = lambda x: gamma * x
         self.cbf = TabularControlAffineCBF(self.dynamics, grid=self.grid, alpha=alpha)

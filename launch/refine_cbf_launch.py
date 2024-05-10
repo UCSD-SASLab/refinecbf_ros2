@@ -15,32 +15,28 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument(
-            'safety_filter_active', default_value='True',
+            'safety_filter_active',
             description='Activate refinecbf based safety filter'),
         DeclareLaunchArgument(
-            'update_vf_online', default_value='True',
+            'update_vf_online',
             description='Update value function online using HJ Reachability'),
         DeclareLaunchArgument(
-            'vf_initialization_method', default_value='sdf',
+            'vf_initialization_method',
             description='Value function initialization method'),
         DeclareLaunchArgument(
-            'vf_update_method', default_value='file',
+            'vf_update_method',
             description='Message parsing method for VF update'),
         DeclareLaunchArgument(
-            'CBF_parameter_file', default_value=None,
-            description='CBF parameter file'),
-        DeclareLaunchArgument(
-            'initial_vf_file', default_value=None,
-            description='Initial value function file'),
-        DeclareLaunchArgument(
-            'vf_update_accuracy', default_value='high',
+            'vf_update_accuracy',
             description='Accuracy of HJ Reachability computation'),
         DeclareLaunchArgument(
-            'env_config_file', default_value='detection_env.yaml',
-            description='Environment config file'),
+            'robot',
+            description='Robot name'),
         DeclareLaunchArgument(
-            'control_config_file', default_value='crazyflie_control.yaml',
-            description='Control config file'),
+            'exp',
+            description='Which experiment to run'),
+
+
         Node(
             package='refinecbf_ros2',
             executable='refine_cbf_node.py',
@@ -50,9 +46,21 @@ def generate_launch_description():
                 topics_config,
                 {'safety_filter_active': LaunchConfiguration('safety_filter_active'),
                  'vf_update_method': LaunchConfiguration('vf_update_method'),
-                 'env_config_file': LaunchConfiguration('env_config_file'),
-                 'control_config_file': LaunchConfiguration('control_config_file'),}
+                 'robot': LaunchConfiguration('robot'),
+                 'exp': LaunchConfiguration('exp'),
+                 }
             ]),
+        Node(
+            package='refinecbf_ros2',
+            executable='obstacle_node.py',
+            output='screen',
+            parameters=[topics_config,
+                        {'robot': LaunchConfiguration('robot'),
+                         'vf_update_method': LaunchConfiguration('vf_update_method'),
+                         'exp': LaunchConfiguration('exp'),
+                         },
+                        ]
+        ),
         Node(
             package='refinecbf_ros2',
             executable='hj_reachability_node.py',
@@ -64,9 +72,8 @@ def generate_launch_description():
                  'vf_initialization_method': LaunchConfiguration('vf_initialization_method'),
                  'vf_update_accuracy': LaunchConfiguration('vf_update_accuracy'),
                  'vf_update_method': LaunchConfiguration('vf_update_method'),
-                 'env_config_file': LaunchConfiguration('env_config_file'),
-                 'initial_vf_file': LaunchConfiguration('initial_vf_file'),
-                 'CBF_parameter_file': LaunchConfiguration('CBF_parameter_file'),
+                 'robot': LaunchConfiguration('robot'),
+                 'exp': LaunchConfiguration('exp'),
                 }
                 
             ],
@@ -79,7 +86,8 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 topics_config,
-                {'env_config_file': LaunchConfiguration('env_config_file'),
+                {'robot': LaunchConfiguration('robot'),
+                 'exp': LaunchConfiguration('exp'),
                 }
             ],
         )

@@ -1,23 +1,24 @@
-import os
 import hj_reachability as hj
 import jax.numpy as jnp
 import jax
 from cbf_opt import ControlAffineDynamics, ControlAffineCBF
 from refine_cbfs import HJControlAffineDynamics
-from ament_index_python.packages import get_package_share_directory
 import numpy as np
 import rclpy
-import yaml
+from utils import load_parameters
 
 
 class Config:
-    def __init__(self, node, hj_setup=False):
-        node.declare_parameter('env_config_file', rclpy.Parameter.Type.STRING)
-        env_config_file = node.get_parameter('env_config_file').value
+    def __init__(self, node, hj_setup=False, obstacle_setup=False):
+        # if param robot does not exist declare it
+        node.declare_parameter('robot', rclpy.Parameter.Type.STRING)
+        node.declare_parameter("exp", rclpy.Parameter.Type.INTEGER)  # Either str or int FIXME: only int supported
+        robot = node.get_parameter('robot').value
+        exp = node.get_parameter('exp').value
         # rclpy get path to package
-        package_dir = get_package_share_directory('refinecbf_ros2')
-        with open(os.path.join(package_dir, 'config', env_config_file), 'r') as file:
-            config = yaml.safe_load(file)
+        
+        config = load_parameters(robot, exp, 'env')
+        node.env_config = config
         # Load from config file (yaml)
         self.dynamics_class = config["dynamics_class"]
         self.dynamics = self.setup_dynamics()

@@ -10,9 +10,7 @@ from config import Config
 import numpy as np
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-from ament_index_python.packages import get_package_share_directory
-import os
-import yaml
+from utils import load_parameters
 
 
 class Visualization(Node):
@@ -25,10 +23,7 @@ class Visualization(Node):
         self.state_safety_idis = self.config.safety_states
         self.grid = self.config.grid
         # Control Dict with Goal Params:
-        self.declare_parameter("control_config_file", rclpy.Parameter.Type.STRING)
-        control_config_file = self.get_parameter("control_config_file").value
-        with open(os.path.join(get_package_share_directory("refinecbf_ros2"), "config", control_config_file), "r") as f:
-            control_config = yaml.safe_load(f)
+        control_config = load_parameters(self.get_parameter("robot").value, self.get_parameter("exp").value, "control")
         self.nominal_control_dict = control_config["nominal"]
         # Subscriber for SDF and VF:
         self.declare_parameters(

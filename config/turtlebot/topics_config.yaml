@@ -1,0 +1,4 @@
+/**:
+  ros__parameters: 
+    topics:
+      active: '/active'  # Required (otherwise node wont run)

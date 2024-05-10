@@ -5,9 +5,8 @@ from rclpy.node import Node
 import numpy as np
 from refinecbf_ros2.msg import Array
 from example_interfaces.msg import Bool
-from ament_index_python import get_package_share_directory
-import os
-import yaml
+from utils import load_parameters
+from config import Config
 
 
 class NominalController(Node):
@@ -53,10 +52,7 @@ class NominalController(Node):
         self.external_control = None
         self.new_external_control = False
 
-        self.declare_parameter("control_config_file", rclpy.Parameter.Type.STRING)
-        control_config_file = self.get_parameter("control_config_file").value
-        with open(os.path.join(get_package_share_directory("refinecbf_ros2"), "config", control_config_file), "r") as f:
-            self.control_config = yaml.safe_load(f)
+        self.control_config = load_parameters(self.get_parameter("robot").value, self.get_parameter("exp").value, "control")
 
         self.declare_parameter("controller_rate", self.control_config["nominal"]["frequency"])
         self.controller_rate = self.get_parameter("controller_rate").value

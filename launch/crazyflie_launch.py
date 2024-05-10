@@ -5,14 +5,14 @@ from launch import LaunchDescription, LaunchContext
 from launch_ros.actions import Node, SetRemap
 from launch_ros.substitutions import FindPackageShare
 from launch.actions import DeclareLaunchArgument, GroupAction
-from launch.substitutions import LaunchConfiguration, TextSubstitution
+from launch.substitutions import LaunchConfiguration
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import PathJoinSubstitution, TextSubstitution
+from launch.substitutions import PathJoinSubstitution, PythonExpression
 import yaml
 
 package_name = 'refinecbf_ros2'
-
+robot = 'crazyflie'
 
 def load_yaml(file_path):
     with open(file_path, 'r') as file:
@@ -23,10 +23,8 @@ def generate_launch_description():
     topics_config_path = os.path.join(get_package_share_directory(package_name), 'config', 'topics_config.yaml')
     topics_config = load_yaml(topics_config_path)['/**']['ros__parameters']
 
-    cf_topics_config_path = os.path.join(get_package_share_directory(package_name), 'config', 'crazyflie_topics_config.yaml')
+    cf_topics_config_path = os.path.join(get_package_share_directory(package_name), 'config', 'crazyflie/topics_config.yaml')
     cf_topics_config = load_yaml(cf_topics_config_path)['/**']['ros__parameters']
-    # crazyflie_topics_config_path = FindPackageShare('your_package_name') + '/config/crazyflie_topics.yaml'
-    # control_config_path = FindPackageShare('your_package_name') + '/config/control_config.yaml'
     return LaunchDescription([
         DeclareLaunchArgument(
             'safety_filter_active', default_value='True',
@@ -41,26 +39,15 @@ def generate_launch_description():
             'backend', default_value='sim',
             description='cpp / cflib / sim backend for crazyflie'),
         DeclareLaunchArgument(
-            'vf_update_method', default_value='pubsub',
+            'vf_update_method', default_value='file',
             description='Message parsing method for VF update'),
         DeclareLaunchArgument(
-            'vf_update_accuracy', default_value='high',
+            'vf_update_accuracy', default_value='very_high',
             description='Accuracy of HJ Reachability computation'),
         DeclareLaunchArgument(
-            'env_config_file', default_value='detection_env.yaml',
-            description='Environment config file'),
-        DeclareLaunchArgument(
-            'control_config_file', default_value='crazyflie_control.yaml',
-            description='Control config file'),
-        DeclareLaunchArgument(
-            'CBF_parameter_file', default_value='crazyflie_CBF_params.yaml',
-            description='CBF parameter file'),
-        DeclareLaunchArgument(
-            'initial_vf_file', default_value='target_values_judy.npy',
-            description='Initial VF file'),
-        DeclareLaunchArgument(
-            'robot_number', default_value='0',
-            description='Robot number for experiments'),
+            'exp', default_value='1',
+            description='Which experiment to run'),
+
         # Nodes configurations
         Node(
             package='refinecbf_ros2',
@@ -69,8 +56,9 @@ def generate_launch_description():
             output='screen',
             parameters=[topics_config_path,
                         cf_topics_config_path,
-                        {'env_config_file': LaunchConfiguration('env_config_file'),
-                         'control_config_file': LaunchConfiguration('control_config_file'),
+                        {'robot': robot,
+                         'exp': LaunchConfiguration('exp'),
+                         'use_sim_time': PythonExpression(["'", LaunchConfiguration('backend'), "' == 'sim'"]),
                          },
                         ],
         ),
@@ -81,28 +69,25 @@ def generate_launch_description():
             output='screen',
             parameters=[topics_config_path,
                         cf_topics_config_path,
-                        {'control_config_file': LaunchConfiguration('control_config_file'),
-                         'env_config_file': LaunchConfiguration('env_config_file'),
+                        {'robot': robot,
+                         'exp': LaunchConfiguration('exp'),
                          'backend': LaunchConfiguration('backend'),
+                         'use_sim_time': PythonExpression(["'", LaunchConfiguration('backend'), "' == 'sim'"]),
                         },
                         ]
         ),
-        Node(
-            package='refinecbf_ros2',
-            executable='obstacle_node.py',
-            output='screen',
-            parameters=[topics_config_path,
-                        {'vf_update_method': LaunchConfiguration('vf_update_method'),
-                         'env_config_file': LaunchConfiguration('env_config_file')},
-                        ]
-        ),
+
         Node(
             package='refinecbf_ros2',
             executable='disturbance_node.py',
             name='disturbance_node',
             output='screen',
             parameters=[topics_config_path,
-                        {'env_config_file': LaunchConfiguration('env_config_file')}]
+                        {'robot': robot,
+                         'exp': LaunchConfiguration('exp'),
+                         'use_sim_time': PythonExpression(["'", LaunchConfiguration('backend'), "' == 'sim'"]),
+                         },
+                        ]
 
         ),
         Node(
@@ -112,8 +97,10 @@ def generate_launch_description():
             output='screen',
             parameters=[topics_config_path,
                         {'vf_update_method': LaunchConfiguration('vf_update_method'),
-                         'env_config_file': LaunchConfiguration('env_config_file'),
-                         'control_config_file': LaunchConfiguration('control_config_file')},
+                         'robot': robot,
+                         'exp': LaunchConfiguration('exp'),
+                         'use_sim_time': PythonExpression(["'", LaunchConfiguration('backend'), "' == 'sim'"]),
+                         }, 
                         ]
         ),
         # Include other launch files
@@ -127,15 +114,14 @@ def generate_launch_description():
             ]),
             launch_arguments={
                 topics_config_path: topics_config_path,
-                'env_config_file': LaunchConfiguration('env_config_file'),
-                'control_config_file': LaunchConfiguration('control_config_file'),
+                'robot': robot,
+                'exp': LaunchConfiguration('exp'),
                 'safety_filter_active': LaunchConfiguration('safety_filter_active'),
                 'update_vf_online': LaunchConfiguration('update_vf_online'),
                 'vf_initialization_method': LaunchConfiguration('vf_initialization_method'),
                 'vf_update_method': LaunchConfiguration('vf_update_method'),
                 'vf_update_accuracy': LaunchConfiguration('vf_update_accuracy'),
-                'CBF_parameter_file': LaunchConfiguration('CBF_parameter_file'),
-                'initial_vf_file': LaunchConfiguration('initial_vf_file'),
+                'use_sim_time': PythonExpression(["'", LaunchConfiguration('backend'), "' == 'sim'"]),
             }.items()
         ),
         GroupAction(
@@ -156,6 +142,8 @@ def generate_launch_description():
                     ]),
                     launch_arguments={
                         'backend': LaunchConfiguration('backend'),
+                        'use_sim_time': PythonExpression(["'", LaunchConfiguration('backend'), "' == 'sim'"]),
+                        'log_level': LaunchConfiguration('log_level')
                     }.items(),
                 )
             ]

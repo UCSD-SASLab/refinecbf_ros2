@@ -11,11 +11,9 @@ from refinecbf_ros2.msg import ValueFunctionMsg, HiLoArray
 from config import Config, QuadraticCBF
 from refine_cbfs import HJControlAffineDynamics, TabularControlAffineCBF
 from example_interfaces.msg import Bool
-import os
 import threading
 import time
-from ament_index_python.packages import get_package_share_directory
-import yaml
+from utils import load_parameters, load_array
 
 
 class HJReachabilityNode(Node):
@@ -61,8 +59,9 @@ class HJReachabilityNode(Node):
         self.declare_parameter("vf_update_accuracy", "high")
         self.declare_parameter("vf_initialization_method", "sdf")
         self.declare_parameter("initial_vf_file", "None")
-        self.declare_parameter("cbf_params", "None")
         self.declare_parameter("update_vf_online", True)
+
+        control_config = load_parameters(self.get_parameter("robot").value, self.get_parameter("exp").value, "control")
 
         self.vf_update_method = self.get_parameter("vf_update_method").value
         self.vf_update_accuracy = self.get_parameter("vf_update_accuracy").value
@@ -87,7 +86,6 @@ class HJReachabilityNode(Node):
         self.spin_thread = threading.Thread(target=self.spin)
         self.spin_thread.start()
         self.first_message_received.wait()
-        # self.first_message_received.wait()
 
         self.brt = lambda sdf_values: lambda t, x: jnp.minimum(x, sdf_values)
         self.solver_settings = hj.SolverSettings.with_accuracy(
@@ -98,20 +96,13 @@ class HJReachabilityNode(Node):
         if self.vf_initialization_method == "sdf":
             self.vf = self.sdf_values.copy()
         elif self.vf_initialization_method == "cbf":
-            cbf_parameter_file = self.get_parameter("CBF_parameter_file").value
-            import yaml
-
-            package_dir = get_package_share_directory("refinecbf_ros2")
-            with open(os.path.join(package_dir, "config", cbf_parameter_file), "r") as f:
-                cbf_params = yaml.safe_load(f)
-
+            cbf_params = control_config["initial_cbf"]
             original_cbf = QuadraticCBF(self.dynamics, cbf_params["Parameters"], test=False)
             tabular_cbf = TabularControlAffineCBF(self.dynamics, params={}, test=False, grid=self.grid)
             tabular_cbf.tabularize_cbf(original_cbf)
             self.vf = tabular_cbf.vf_table.copy()
         elif self.vf_initialization_method == "file":
-            file_path = self.get_parameter("initial_vf_file").value
-            self.vf = np.load(file_path)
+            self.vf = load_array(self.get_parameter("robot").value, self.get_parameter("exp").value, "vf")
             if self.vf.ndim == self.grid.ndim + 1:
                 self.vf = self.vf[-1]
             assert self.vf.shape == tuple(self.config.grid_shape), "vf file is not compatible with grid size"
@@ -153,16 +144,16 @@ class HJReachabilityNode(Node):
 
     def publish_initial_vf(self):
         # ROS2 uses a slightly different API for waiting for subscribers
+        self.get_logger().info("Number of subscribers: {}".format(self.vf_pub.get_subscription_count()))
         while self.vf_pub.get_subscription_count() < 2:
             self.get_logger().info("HJR node: Waiting for subscribers to connect")
             time.sleep(1)
-
         if self.vf_update_method == "pubsub":
             msg = ValueFunctionMsg()
             msg.vf = self.vf.flatten().tolist()  # Ensure data is in a suitable format
             self.vf_pub.publish(msg)
         else:  # self.vf_update_method == "file"
-            np.save("./vf.npy", self.vf)  # Save the value function to a file
+            np.save("vf.npy", self.vf.copy())
             self.vf_pub.publish(Bool(data=True))  # Publish a Bool message indicating completion
 
     def callback_disturbance_update(self, msg):
@@ -239,7 +230,7 @@ class HJReachabilityNode(Node):
         """
         while rclpy.ok():
             if self.update_vf_flag:
-                self.get_logger().info(f"Share of safe cells: {np.sum(self.vf >= 0) / self.vf.size:.3f}")
+                self.get_logger().info(f"Share of safe cells: {np.sum(self.vf >= 0) / self.vf.size:.3f}", throttle_duration_sec=5.0)
                 time_now = self.get_clock().now().seconds_nanoseconds()[0]
                 new_values = hj.step(
                     self.solver_settings,
@@ -247,11 +238,11 @@ class HJReachabilityNode(Node):
                     self.grid,
                     0.0,
                     self.vf.copy(),
-                    -0.1,
+                    -0.5,
                     progress_bar=False,
                 )
                 elapsed_time = self.get_clock().now().seconds_nanoseconds()[0] - time_now
-                self.get_logger().info(f"Time taken to calculate vf: {elapsed_time:.2f}")
+                self.get_logger().info(f"Time taken to calculate vf: {elapsed_time:.2f}", throttle_duration_sec=5.0)
                 self.vf = new_values
                 if self.vf_update_method == "pubsub":
                     self.vf_pub.publish(ValueFunctionMsg(vf=self.vf.flatten().tolist()))
