@@ -2,6 +2,10 @@
 
 import rclpy
 from rclpy.node import Node
+import jax
+import jax.numpy as jnp
+# Global flag to set a specific platform, must be used at startup.
+jax.config.update('jax_platform_name', 'cpu')
 from refinecbf_ros2.msg import ValueFunctionMsg, Array, HiLoArray
 from example_interfaces.msg import Bool, Float32
 from refine_cbfs import TabularControlAffineCBF

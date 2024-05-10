@@ -2,11 +2,14 @@
 
 import rclpy
 from rclpy.node import Node
+import jax
+import jax.numpy as jnp
+# Global flag to set a specific platform, must be used at startup.
+jax.config.update('jax_platform_name', 'cpu')
 from example_interfaces.msg import Bool
 from refinecbf_ros2.msg import Array, ValueFunctionMsg, Obstacles
 from refinecbf_ros2.srv import ActivateObstacle
 import numpy as np
-import jax.numpy as jnp
 import hj_reachability as hj
 import matplotlib.pyplot as plt
 from config import Config
