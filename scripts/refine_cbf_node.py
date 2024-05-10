@@ -11,10 +11,11 @@ from example_interfaces.msg import Bool, Float32
 from refine_cbfs import TabularControlAffineCBF
 from cbf_opt import ControlAffineASIF, SlackifiedControlAffineASIF
 from config import Config
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 import numpy as np
 from utils import load_parameters
-import yaml
-import os
+import threading
 
 
 class SafetyFilterNode(Node):
@@ -31,6 +32,8 @@ class SafetyFilterNode(Node):
         self.grid = self.config.grid
         self.safety_states_idis = self.config.safety_states
         self.safety_controls_idis = self.config.safety_controls
+        self.vf_update_callback_group = MutuallyExclusiveCallbackGroup()
+        self.other_callback_group = ReentrantCallbackGroup()
         # Parameters (for topics)
         self.declare_parameters(
             "",
@@ -47,8 +50,6 @@ class SafetyFilterNode(Node):
 
         self.declare_parameter("safety_filter_active", True)
         self.declare_parameter("vf_update_method", "pubsub")
-        self.declare_parameter("control_config_file", rclpy.Parameter.Type.STRING)
-        control_config_file = self.get_parameter("control_config_file").value
 
         control_config = load_parameters(self.get_parameter("robot").value, self.get_parameter("exp").value, "control")
 
@@ -59,14 +60,17 @@ class SafetyFilterNode(Node):
         self.vf_update_method = self.get_parameter("vf_update_method").value
         vf_topic = self.get_parameter("topics.vf_update").value
         if self.vf_update_method == "pubsub":
-            self.vf_sub = self.create_subscription(ValueFunctionMsg, vf_topic, self.callback_vf_update_pubsub, 10)
+            self.vf_sub = self.create_subscription(ValueFunctionMsg, vf_topic, self.callback_vf_update_pubsub, 
+                                                   10, callback_group=self.vf_update_callback_group)
         elif self.vf_update_method == "file":
-            self.vf_sub = self.create_subscription(Bool, vf_topic, self.callback_vf_update_file, 10)
+            self.vf_sub = self.create_subscription(Bool, vf_topic, self.callback_vf_update_file, 
+                                                   10, callback_group=self.vf_update_callback_group)
         else:
             raise NotImplementedError(f"{self.vf_update_method} is not a valid vf update method")
 
         state_topic = self.get_parameter("topics.cbf_state").value
-        self.state_sub = self.create_subscription(Array, state_topic, self.callback_state, 10)
+        self.state_sub = self.create_subscription(Array, state_topic, self.callback_state, 
+                                                  10, callback_group=self.other_callback_group)
         self.state = None
 
         # CBF setup
@@ -74,11 +78,14 @@ class SafetyFilterNode(Node):
         slackify_safety_constraint = self.get_parameter("control.asif.slack").value
 
         alpha = lambda x: gamma * x
-        self.cbf = TabularControlAffineCBF(self.dynamics, grid=self.grid, alpha=alpha)
+        self.active_buffer_cbf = TabularControlAffineCBF(self.dynamics, grid=self.grid, alpha=alpha)
+        self.back_buffer_cbf = TabularControlAffineCBF(self.dynamics, grid=self.grid, alpha=alpha)
+        self.lock = threading.Lock()
+
         if slackify_safety_constraint:
-            self.safety_filter_solver = SlackifiedControlAffineASIF(self.dynamics, self.cbf)
+            self.safety_filter_solver = SlackifiedControlAffineASIF(self.dynamics, self.active_buffer_cbf)
         else:  # Enforce strict inequality
-            self.safety_filter_solver = ControlAffineASIF(self.dynamics, self.cbf)
+            self.safety_filter_solver = ControlAffineASIF(self.dynamics, self.active_buffer_cbf)
 
         # Control limits
         self.safety_filter_solver.umin = np.array(self.config.control_space["lo"])
@@ -89,20 +96,23 @@ class SafetyFilterNode(Node):
 
         # Control subscriptions
         nom_control_topic = self.get_parameter("topics.cbf_nominal_control").value
-        self.nominal_control_sub = self.create_subscription(Array, nom_control_topic, self.callback_safety_filter, 10)
+        self.nominal_control_sub = self.create_subscription(Array, nom_control_topic, self.callback_safety_filter, 
+                                                            10, callback_group=self.other_callback_group)
 
         filtered_control_topic = self.get_parameter("topics.cbf_safe_control").value
         self.pub_filtered_control = self.create_publisher(Array, filtered_control_topic, 10)
 
         actuation_update_topic = self.get_parameter("topics.actuation_update").value
         self.actuation_update_sub = self.create_subscription(
-            HiLoArray, actuation_update_topic, self.callback_actuation_update, 10
+            HiLoArray, actuation_update_topic, self.callback_actuation_update, 
+            10, callback_group=self.other_callback_group
         )
         # Optional disturbance updates
         if self.config.disturbance_space["n_dims"] != 0:
             disturbance_update_topic = self.get_parameter("topics.disturbance_update").value
             self.disturbance_update_sub = self.create_subscription(
-                HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 10
+                HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 
+                10, callback_group=self.other_callback_group
             )
 
         # Value function publishing
@@ -110,7 +120,6 @@ class SafetyFilterNode(Node):
         self.value_function_pub = self.create_publisher(Float32, value_function_topic, 10)
 
         self.safety_filter_active = self.get_parameter("safety_filter_active").value
-
         if self.safety_filter_active:
             self.initialized_safety_filter = False
             self.safety_filter_solver.setup_optimization_problem()
@@ -131,13 +140,21 @@ class SafetyFilterNode(Node):
     def callback_vf_update_file(self, vf_msg):
         if not vf_msg.data:
             return
-        self.cbf.vf_table = np.load("vf.npy").reshape(self.config.grid_shape)
+        self.back_buffer_cbf.vf_table = np.load("vf.npy").reshape(self.config.grid_shape)
+        with self.lock:
+            self.swap_buffers()
         if not self.initialized_safety_filter:
             self.get_logger().info("Initialized safety filter")
             self.initialized_safety_filter = True
 
+    def swap_buffers(self):
+        self.active_buffer_cbf, self.back_buffer_cbf = self.back_buffer_cbf, self.active_buffer_cbf
+        self.safety_filter_solver.cbf = self.active_buffer_cbf
+
     def callback_vf_update_pubsub(self, vf_msg):
-        self.cbf.vf_table = np.array(vf_msg.vf).reshape(self.config.grid_shape)
+        self.back_buffer_cbf.vf_table = np.array(vf_msg.vf).reshape(self.config.grid_shape)
+        with self.lock:
+            self.swap_buffers()
         if not self.initialized_safety_filter:
             self.get_logger().info("Initialized safety filter")
             self.initialized_safety_filter = True
@@ -174,9 +191,12 @@ class SafetyFilterNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     safety_filter = SafetyFilterNode()
-    rclpy.spin(safety_filter)
-    safety_filter.destroy_node()
-    rclpy.shutdown()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(safety_filter)
+    try:
+        executor.spin()
+    finally:
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":
