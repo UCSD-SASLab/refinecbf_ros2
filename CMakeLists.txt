@@ -32,11 +32,14 @@ install(PROGRAMS
   scripts/template/nominal_controller.py
   scripts/config.py
   scripts/utils.py
+
   scripts/crazyflie/cf_nominal_controller.py
   scripts/crazyflie/cf_hw_interface.py
   scripts/crazyflie/cf_visualization.py
-  scripts/template/nominal_controller.py
-  scripts/config.py
+
+  scripts/turtlebot3/tb_nominal_controller.py
+  scripts/turtlebot3/tb_hw_interface.py
+  scripts/turtlebot3/tb_visualization.py
   DESTINATION lib/${PROJECT_NAME}  
 )
 
