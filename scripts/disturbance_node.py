@@ -14,7 +14,7 @@ class DisturbanceNode(Node):
 
     def __init__(self):
         super().__init__("disturbance_node")
-        config = Config(self, hj_setup=True)
+        config = Config(self)
         self.declare_parameters(
             "",
             [
@@ -37,8 +37,11 @@ class DisturbanceNode(Node):
         )
 
         self.state_sub = self.create_subscription(Array, state_topic, self.callback_state, 10)
-        self.disturbance_lo = np.array(config.disturbance_space["lo"])
-        self.disturbance_hi = np.array(config.disturbance_space["hi"])
+        self.disturbance_dims = config.disturbance_space["n_dims"]
+
+        if not self.disturbance_dims == 0:
+            self.disturbance_lo = np.array(config.disturbance_space["lo"])
+            self.disturbance_hi = np.array(config.disturbance_space["hi"])
 
         self.dynamics = config.dynamics
         self.state = None
@@ -59,8 +62,10 @@ class DisturbanceNode(Node):
             self.pub_disturbance.publish(per_state_disturbance_msg)
 
     def compute_disturbance(self):
+        if self.disturbance_dims == 0:
+            return np.zeros_like(self.state)
         disturbance = (
-            self.random_state.beta(self.beta_skew, self.beta_skew, size=self.disturbance_lo.shape)
+            self.random_state.beta(self.beta_skew, self.beta_skew, size=self.disturbance_dims)
             * (self.disturbance_hi - self.disturbance_lo)
             + self.disturbance_lo
         )
@@ -70,6 +75,7 @@ class DisturbanceNode(Node):
     def callback_disturbance_update(self, msg):
         self.disturbance_lo = np.array(msg.lo)
         self.disturbance_hi = np.array(msg.hi)
+        self.disturbance_dims = len(self.disturbance_lo)
 
     def callback_state(self, msg):
         self.state = np.array(msg.value)

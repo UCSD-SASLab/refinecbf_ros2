@@ -23,20 +23,21 @@ class NominalController(Node):
     - control_pub (~topics/nominal_control): Publishes the nominal control.
     """
 
-    def __init__(self, node_name):
+    def __init__(self, node_name, hj_setup=False):
         super().__init__(node_name)
+        self.config = Config(self, hj_setup=hj_setup)
         # Get topics from parameters
         self.declare_parameters(
             "",
             [
                 ("topics.cbf_state", rclpy.Parameter.Type.STRING),
-                ("topics.robot_external_control", rclpy.Parameter.Type.STRING),
+                ("topics.cbf_external_control", rclpy.Parameter.Type.STRING),
                 ("topics.cbf_nominal_control", rclpy.Parameter.Type.STRING),
                 ("topics.publish_external_control_flag", rclpy.Parameter.Type.STRING),
             ],
         )
         state_topic = self.get_parameter("topics.cbf_state").value
-        external_control_topic = self.get_parameter("topics.robot_external_control").value
+        external_control_topic = self.get_parameter("topics.cbf_external_control").value
         nominal_control_topic = self.get_parameter("topics.cbf_nominal_control").value
         publish_ext_control_flag_topic = self.get_parameter("topics.publish_external_control_flag").value
 

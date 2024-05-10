@@ -38,11 +38,11 @@ class HJReachabilityNode(Node):
         """
         # Load configuration
         super().__init__("hj_reachability_node")
-        config = Config(self, hj_setup=True)
+        self.config = Config(self, hj_setup=True)
         # Initialize dynamics, grid, and Hamilton-Jacobi dynamics
-        self.dynamics = config.dynamics
-        self.grid = config.grid
-        self.hj_dynamics = config.hj_dynamics
+        self.dynamics = self.config.dynamics
+        self.grid = self.config.grid
+        self.hj_dynamics = self.config.hj_dynamics
         self.control_space = self.hj_dynamics.control_space
         self.disturbance_space = self.hj_dynamics.disturbance_space
 
@@ -114,9 +114,10 @@ class HJReachabilityNode(Node):
             self.vf = np.load(file_path)
             if self.vf.ndim == self.grid.ndim + 1:
                 self.vf = self.vf[-1]
-            assert self.vf.shape == self.grid.shape, "vf file is not compatible with grid size"
+            assert self.vf.shape == tuple(self.config.grid_shape), "vf file is not compatible with grid size"
         else:
             raise NotImplementedError("{} is not a valid initialization method".format(self.vf_initialization_method))
+        self.get_logger().info(f"Share of safe cells: {np.sum(self.vf >= 0) / self.vf.size:.3f}")
 
         # Set up value function publisher
         self.vf_topic = self.get_parameter("topics.vf_update").value
@@ -202,7 +203,7 @@ class HJReachabilityNode(Node):
         This method updates the obstacle and the solver settings.
         """
         self.get_logger().info("SDF update received")
-        self.sdf_values = jnp.array(msg.vf).reshape(self.grid.shape)
+        self.sdf_values = jnp.array(msg.vf).reshape(self.config.grid_shape)
         if not self.first_message_received.is_set():
             self.first_message_received.set()
         else:
@@ -214,7 +215,7 @@ class HJReachabilityNode(Node):
         self.get_logger().info("SDF update received")
         if not msg.data:
             return
-        self.sdf_values = jnp.array(jnp.load("./sdf.npy")).reshape(self.grid.shape)
+        self.sdf_values = np.array(np.load("sdf.npy")).reshape(self.config.grid_shape)
         if not self.first_message_received.is_set():
             self.first_message_received.set()
         else:
@@ -252,11 +253,11 @@ class HJReachabilityNode(Node):
                 elapsed_time = self.get_clock().now().seconds_nanoseconds()[0] - time_now
                 self.get_logger().info(f"Time taken to calculate vf: {elapsed_time:.2f}")
                 self.vf = new_values
-            if self.vf_update_method == "pubsub":
-                self.vf_pub.publish(ValueFunctionMsg(vf=self.vf.flatten().tolist()))
-            else:  # self.vf_update_method == "file"
-                np.save("./vf.npy", self.vf)
-                self.vf_pub.publish(Bool(data=True))
+                if self.vf_update_method == "pubsub":
+                    self.vf_pub.publish(ValueFunctionMsg(vf=self.vf.flatten().tolist()))
+                else:  # self.vf_update_method == "file"
+                    np.save("vf.npy", self.vf)
+                    self.vf_pub.publish(Bool(data=True))
 
 
 def main(args=None):

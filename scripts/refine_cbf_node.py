@@ -22,12 +22,11 @@ class SafetyFilterNode(Node):
         super().__init__("safety_filter_node")
         self.initialized_safety_filter = False  # Initialization flag for the callback
 
-        config = Config(self, hj_setup=True)
-        self.dynamics = config.dynamics
-        self.grid = config.grid
-        self.safety_states_idis = config.safety_states
-        self.safety_controls_idis = config.safety_controls
-
+        self.config = Config(self, hj_setup=True)
+        self.dynamics = self.config.dynamics
+        self.grid = self.config.grid
+        self.safety_states_idis = self.config.safety_states
+        self.safety_controls_idis = self.config.safety_controls
         # Parameters (for topics)
         self.declare_parameters(
             "",
@@ -79,11 +78,11 @@ class SafetyFilterNode(Node):
             self.safety_filter_solver = ControlAffineASIF(self.dynamics, self.cbf)
 
         # Control limits
-        self.safety_filter_solver.umin = np.array(config.control_space["lo"])
-        self.safety_filter_solver.umax = np.array(config.control_space["hi"])
-        if config.disturbance_space["n_dims"] != 0:
-            self.safety_filter_solver.dmin = np.array(config.disturbance_space["lo"])
-            self.safety_filter_solver.dmax = np.array(config.disturbance_space["hi"])
+        self.safety_filter_solver.umin = np.array(self.config.control_space["lo"])
+        self.safety_filter_solver.umax = np.array(self.config.control_space["hi"])
+        if self.config.disturbance_space["n_dims"] != 0:
+            self.safety_filter_solver.dmin = np.array(self.config.disturbance_space["lo"])
+            self.safety_filter_solver.dmax = np.array(self.config.disturbance_space["hi"])
 
         # Control subscriptions
         nom_control_topic = self.get_parameter("topics.cbf_nominal_control").value
@@ -97,7 +96,7 @@ class SafetyFilterNode(Node):
             HiLoArray, actuation_update_topic, self.callback_actuation_update, 10
         )
         # Optional disturbance updates
-        if config.disturbance_space["n_dims"] != 0:
+        if self.config.disturbance_space["n_dims"] != 0:
             disturbance_update_topic = self.get_parameter("topics.disturbance_update").value
             self.disturbance_update_sub = self.create_subscription(
                 HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 10
@@ -129,13 +128,13 @@ class SafetyFilterNode(Node):
     def callback_vf_update_file(self, vf_msg):
         if not vf_msg.data:
             return
-        self.cbf.vf_table = np.array(np.load("./vf.npy")).reshape(self.grid.shape)
+        self.cbf.vf_table = np.load("vf.npy").reshape(self.config.grid_shape)
         if not self.initialized_safety_filter:
             self.get_logger().info("Initialized safety filter")
             self.initialized_safety_filter = True
 
     def callback_vf_update_pubsub(self, vf_msg):
-        self.cbf.vf_table = np.array(vf_msg.vf).reshape(self.grid.shape)
+        self.cbf.vf_table = np.array(vf_msg.vf).reshape(self.config.grid_shape)
         if not self.initialized_safety_filter:
             self.get_logger().info("Initialized safety filter")
             self.initialized_safety_filter = True

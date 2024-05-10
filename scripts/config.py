@@ -26,22 +26,15 @@ class Config:
         self.safety_states = config["safety_states"]
         self.safety_controls = config["safety_controls"]
         self.state_domain = config["state_domain"]
-        self.grid = self.setup_grid()
+        self.grid_shape = np.array(self.state_domain["resolution"])
+
+        self.obstacle_list = config.get("obstacles", [])
+        self.actuation_updates_list = config["actuation_updates"]
+        self.disturbance_updates_list = config["disturbance_updates"]
+        self.boundary_env = config["boundary"]        
 
         if hj_setup:
-            self.obstacle_list = config["obstacles"]
-            self.actuation_updates_list = config["actuation_updates"]
-            self.disturbance_updates_list = config["disturbance_updates"]
-            self.boundary_env = config["boundary"]
-
-            (
-                self.detection_obstacles,
-                self.service_obstacles,
-                self.update_obstacles,
-                self.active_obstacles,
-                self.active_obstacle_names,
-                self.boundary,
-            ) = self.setup_obstacles()
+            self.grid = self.setup_grid()  # This 
             if self.control_space["n_dims"] == 0:
                 control_space_hj = hj.sets.Box(
                     lo=jnp.array([]), hi=jnp.array([]))
@@ -61,12 +54,20 @@ class Config:
 
         # self.assert_valid(hj_setup)
 
+        if obstacle_setup:
+            (
+                self.detection_obstacles,
+                self.service_obstacles,
+                self.update_obstacles,
+                self.active_obstacles,
+                self.active_obstacle_names,
+                self.boundary,
+            ) = self.setup_obstacles()
+
     def assert_valid(self, hj_setup):
         assert len(self.control_space["lo"]) == self.dynamics.control_dims
         assert len(self.control_space["hi"]) == self.dynamics.control_dims
-        assert self.dynamics.n_dims == self.grid.ndim
-        assert self.dynamics.periodic_dims == np.where(
-            self.grid._is_periodic_dim)[0].tolist()
+        assert self.dynamics.n_dims == len(self.state_domain["resolution"])
 
         if hj_setup:
             if len(self.obstacle_list) != 0:

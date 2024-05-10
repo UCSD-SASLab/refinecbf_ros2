@@ -29,6 +29,8 @@ install(PROGRAMS
   scripts/refine_cbf_node.py
   scripts/hj_reachability_node.py
   scripts/modify_environment.py
+  scripts/template/nominal_controller.py
+  scripts/config.py
   scripts/crazyflie/cf_nominal_controller.py
   scripts/crazyflie/cf_hw_interface.py
   scripts/crazyflie/cf_visualization.py

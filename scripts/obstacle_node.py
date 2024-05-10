@@ -21,16 +21,15 @@ class ObstacleNode(Node):
         super().__init__("obstacle_node")
 
         # Config:
-        config = Config(self, hj_setup=True)
-        self.dynamics = config.dynamics
-        self.grid = config.grid
-        self.detection_obstacles = config.detection_obstacles
-        self.service_obstacles = config.service_obstacles
-        self.active_obstacles = config.active_obstacles
-        self.update_obstacles = config.update_obstacles
-        self.active_obstacle_names = config.active_obstacle_names
-        self.boundary = config.boundary
-        self.safety_states_idis = config.safety_states
+        self.config = Config(self, hj_setup=True, obstacle_setup=True)
+        self.dynamics = self.config.dynamics
+        self.detection_obstacles = self.config.detection_obstacles
+        self.service_obstacles = self.config.service_obstacles
+        self.active_obstacles = self.config.active_obstacles
+        self.update_obstacles = self.config.update_obstacles
+        self.active_obstacle_names = self.config.active_obstacle_names
+        self.boundary = self.config.boundary
+        self.safety_states_idis = self.config.safety_states
         self.robot_state = None
         # Parameter and Publisher setup:
         self.declare_parameter("vf_update_method", "pubsub")
@@ -97,7 +96,7 @@ class ObstacleNode(Node):
             self.update_active_obstacles()
 
     def update_sdf(self):
-        sdf = hj.utils.multivmap(self.build_sdf(), jnp.arange(self.grid.ndim))(self.grid.states)
+        sdf = hj.utils.multivmap(self.build_sdf(), jnp.arange(self.config.grid.ndim))(self.config.grid.states)
         self.get_logger().info("Share Safe SDF {:.2f}".format(((sdf >= 0).sum() / sdf.size) * 100))
         if self.vf_update_method == "pubsub":
             self.sdf_update_pub.publish(ValueFunctionMsg(vf=sdf.flatten()))

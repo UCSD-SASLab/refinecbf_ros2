@@ -13,7 +13,7 @@ class ModifyEnvironmentServer(Node):
         super().__init__("modify_environment_node")
 
         # Load configuration
-        config = Config(self, hj_setup=True)
+        config = Config(self, hj_setup=False)
         self.disturbance_space = config.disturbance_space
         self.control_space = config.control_space
         self.actuation_update_list = config.actuation_updates_list

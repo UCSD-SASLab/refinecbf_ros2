@@ -21,10 +21,9 @@ class Visualization(Node):
         super().__init__("visualization_node")
 
         # Config:
-        config = Config(self, hj_setup=True)
-        self.state_safety_idis = config.safety_states
-        self.grid = config.grid
-
+        self.config = Config(self, hj_setup=True)
+        self.state_safety_idis = self.config.safety_states
+        self.grid = self.config.grid
         # Control Dict with Goal Params:
         self.declare_parameter("control_config_file", rclpy.Parameter.Type.STRING)
         control_config_file = self.get_parameter("control_config_file").value
@@ -90,8 +89,8 @@ class Visualization(Node):
         self.goal_marker_publisher = self.create_publisher(Marker, goal_marker_topic, 10)
 
         # load Obstacle and Boundary dictionaries
-        self.obstacle_dict = config.obstacle_list
-        self.boundary_dict = config.boundary_env
+        self.obstacle_dict = self.config.obstacle_list
+        self.boundary_dict = self.config.boundary_env
 
     def clip_state(self, state):
         return np.clip(state, np.array(self.grid.domain.lo) + 0.01, np.array(self.grid.domain.hi) - 0.01)
@@ -139,20 +138,20 @@ class Visualization(Node):
         self.goal_marker_publisher.publish(marker)
 
     def callback_sdf_pubsub(self, sdf_msg):
-        self.sdf = np.array(sdf_msg.vf).reshape(self.grid.shape)
+        self.sdf = np.array(sdf_msg.vf).reshape(self.config.grid_shape)
 
     def callback_sdf_file(self, sdf_msg):
         if not sdf_msg.data:
             return
-        self.sdf = np.array(np.load("./sdf.npy")).reshape(self.grid.shape)
+        self.sdf = np.array(np.load("./sdf.npy")).reshape(self.config.grid_shape)
 
     def callback_vf_pubsub(self, vf_msg):
-        self.vf = np.array(vf_msg.vf).reshape(self.grid.shape)
+        self.vf = np.array(vf_msg.vf).reshape(self.config.grid_shape)
 
     def callback_vf_file(self, vf_msg):
         if not vf_msg.data:
             return
-        self.vf = np.array(np.load("./vf.npy")).reshape(self.grid.shape)
+        self.vf = np.load("vf.npy").reshape(self.config.grid_shape)
 
     def callback_obstacle(self, obstacle_msg):
         self.active_obstacle_names = obstacle_msg.obstacle_names
