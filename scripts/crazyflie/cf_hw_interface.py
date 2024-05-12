@@ -6,11 +6,12 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from refinecbf_ros2.msg import Array
 from refinecbf_ros2.srv import HighLevelCommand
+from refinecbf_ros2.action import Calibration
 import sys
 import os
 import rowan
 from crazyflie_interfaces.srv import NotifySetpointsStop, Land, Takeoff
-
+from rclpy.action import ActionClient
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 from template.hw_interface import BaseInterface
 from utils import load_parameters
@@ -39,10 +40,12 @@ class CrazyflieInterface(BaseInterface):
                 ("services.takeoff", rclpy.Parameter.Type.STRING),
                 ("services.land", rclpy.Parameter.Type.STRING),
                 ("services.stop_setpoints", rclpy.Parameter.Type.STRING),
+                ("actions.calibrate_controller", rclpy.Parameter.Type.STRING),
             ],
         )
         self.in_flight_flag_topic = self.get_parameter("topics.in_flight").value
         self.is_in_flight = False
+        
         self.zero_control_out_msg = self.control_out_msg_type()
         self.zero_control_out_msg.linear.x = 0.0
         self.zero_control_out_msg.linear.y = 0.0
@@ -69,6 +72,9 @@ class CrazyflieInterface(BaseInterface):
 
         self.target_position_topic = self.get_parameter("services.target_position").value
         self.lqr_target_service = self.create_client(HighLevelCommand, self.target_position_topic)
+
+        self.calibrate_controller_topic = self.get_parameter("actions.calibrate_controller").value
+        self.calibrate_controller_client = ActionClient(self, Calibration, self.calibrate_controller_topic)
 
         # Control bounds
         control_config = load_parameters(self.get_parameter("robot").value, self.get_parameter("exp").value, "control")
@@ -104,10 +110,10 @@ class CrazyflieInterface(BaseInterface):
                 req = Takeoff.Request()
                 req.group_mask = 0  # all groups?
                 req.height = 1.0
-                duration = 3.0
+                duration = 2.0
                 req.duration = rclpy.duration.Duration(seconds=duration).to_msg()
                 self.takeoffService.call_async(req)
-                self.takeoff_timer = self.create_timer(10.0, self.toggle_in_flight_flag)
+                self.takeoff_timer = self.create_timer(2.0, self.toggle_in_flight_flag)
                 response.response = "Taking Off"
         elif request.command == "end":
             if not self.is_in_flight:
@@ -139,9 +145,23 @@ class CrazyflieInterface(BaseInterface):
                 # Send external setpoint control to the drone nominal controller
                 self.lqr_target_service.call_async(request)
                 response.response = "New target set: x={}, y={}, z={}".format(*np.array(request.position.value))
+        elif request.command == "calibrate":
+            if not self.is_in_flight:
+                response.response = "Not in flight (calibrate command ignored)"
+            else:
+                # Calibrate the controller
+                msg = Calibration.Goal()
+                msg.position.value = request.position.value
+                self._calibrate_future = self.calibrate_controller_client.send_goal_async(msg)
+                self._calibrate_future.add_done_callback(self.calibrate_done_callback)
+                response.response = "Calibrating controller"
+        
         else:
             response.response = "actions not implemented (no impact)"
         return response
+    
+    def calibrate_done_callback(self, future):
+        self.get_logger().info("Fully calibrated!")
 
     def callback_state(self, msg):
         state_out_msg = Array()

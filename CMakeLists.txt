@@ -54,6 +54,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ActivateObstacle.srv"
   "srv/ModifyEnvironment.srv"
   "srv/HighLevelCommand.srv"
+  "action/Calibration.action"
  )
 
 if(BUILD_TESTING)

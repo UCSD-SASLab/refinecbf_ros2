@@ -73,7 +73,14 @@ class NominalController(Node):
 
         This method updates the robot's state based on the incoming message.
         """
-        self.state = np.array(state_array_msg.value)
+        self.process_state(np.array(state_array_msg.value))
+
+    def process_state(self, state):
+        """
+        Process the new state.
+        Base behavior: Update only state internally.
+        """
+        self.state = state
 
     def callback_external_control(self, control_msg):
         """

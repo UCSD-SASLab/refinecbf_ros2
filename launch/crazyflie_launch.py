@@ -47,6 +47,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'exp', default_value='1',
             description='Which experiment to run'),
+        DeclareLaunchArgument(
+            'uri', default_value='',
+            description='Robot number'),
 
         # Nodes configurations
         Node(
@@ -143,6 +146,7 @@ def generate_launch_description():
                     launch_arguments={
                         'backend': LaunchConfiguration('backend'),
                         'use_sim_time': PythonExpression(["'", LaunchConfiguration('backend'), "' == 'sim'"]),
+                        'robot_number': LaunchConfiguration('uri'),
                     }.items(),
                 )
             ]
