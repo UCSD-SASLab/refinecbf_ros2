@@ -273,6 +273,71 @@ class Circle(Obstacle):
         return distance
 
 
+class Ellipse(Obstacle):
+    def __init__(
+        self, stateIndices, obstacleName, axes, center, updateRule="Time", padding=0, updateTime=None, detectionRadius=None
+    ) -> None:
+        super().__init__("Ellipse", stateIndices, obstacleName,
+                         updateRule, padding, updateTime, detectionRadius)
+        self.axes = jnp.array(axes)  # (semi_major_axis, semi_minor_axis)
+        self.center = jnp.reshape(jnp.array(center), (-1, 1))
+
+    def obstacle_sdf(self, x):
+        # Translate points to ellipse coordinate system
+        points = jnp.reshape(x[..., self.stateIndices], (-1, 2)) - self.center.T
+
+        # Ellipse parameters
+        a, b = self.axes
+
+        # Compute the absolute values of the translated point coordinates
+        x_abs = jnp.abs(points[..., 0])
+        y_abs = jnp.abs(points[..., 1])
+
+        # Normalize the coordinates by the ellipse axes
+        q = jnp.stack([x_abs / a, y_abs / b], axis=-1)
+        w = q - q**3 / jnp.linalg.norm(q**3, axis=-1, keepdims=True)
+
+        # Calculate the distances
+        distance_outside = jnp.linalg.norm(w * jnp.array([a, b]), axis=-1) - 1
+        distance_inside = jnp.min(jnp.abs(q), axis=-1) * jnp.linalg.norm(jnp.array([a, b])) - 1
+
+        # Conditional selection for inside or outside
+        obstacle_sdf = jax.lax.cond(
+            jnp.any(q > 1.0, axis=-1),
+            lambda _: distance_outside,
+            lambda _: -distance_inside,
+            operand=None
+        ) - self.padding
+
+        # Reshape to the desired output shape
+        output_shape = x.shape[:-1] + (201,)
+        obstacle_sdf = jnp.reshape(obstacle_sdf, output_shape)
+        return obstacle_sdf
+
+    def distance_to_obstacle(self, state):
+        # Translate points to ellipse coordinate system
+        points = state[self.stateIndices].reshape(-1, 2) - self.center.T
+
+        # Ellipse parameters
+        a, b = self.axes
+
+        # Compute the absolute values of the translated point coordinates
+        x_abs = np.abs(points[:, 0])
+        y_abs = np.abs(points[:, 1])
+
+        # Normalize the coordinates by the ellipse axes
+        q = np.stack([x_abs / a, y_abs / b], axis=-1)
+        w = q - q**3 / np.linalg.norm(q**3, axis=-1, keepdims=True)
+
+        # Calculate the distances
+        distance_outside = np.linalg.norm(w * np.array([a, b]), axis=-1) - 1
+        distance_inside = np.min(np.abs(q), axis=-1) * np.linalg.norm(np.array([a, b])) - 1
+
+        distance = np.where(np.any(q > 1.0, axis=-1), distance_outside, -distance_inside)
+        return distance - self.padding
+
+
+
 class Rectangle(Obstacle):
     def __init__(
         self, stateIndices, obstacleName, minVal, maxVal, updateRule="Time", padding=0, updateTime=None, detectionRadius=None
@@ -360,7 +425,7 @@ class QuadNearHoverPlanarDynamics(ControlAffineDynamics):
 
     STATES = ["y", "z", "v_y", "v_z"]
     CONTROLS = ["tan(phi)", "T"]
-    DISTURBANCES = ["dy"]
+    DISTURBANCES = ["dy", "dvy"]
 
     def open_loop_dynamics(self, state, time: float = 0.0):
         return jnp.array([state[2], state[3], 0.0, -self.params["g"]])
@@ -369,7 +434,7 @@ class QuadNearHoverPlanarDynamics(ControlAffineDynamics):
         return jnp.array([[0.0, 0.0], [0.0, 0.0], [-self.params["g"], 0.0], [0.0, 1.0]])
 
     def disturbance_matrix(self, state, time: float = 0.0):
-        return jnp.array([[1.0, 0.0, 0.0, 0.0]]).reshape(len(self.STATES), len(self.DISTURBANCES))
+        return jnp.array([[1.0, 0.0], [0.0, 0.0], [0.0, 1.0], [0.0, 0.0]])
 
 
 class DubinsCarDynamics(ControlAffineDynamics):
