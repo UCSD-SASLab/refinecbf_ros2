@@ -64,18 +64,19 @@ class ModifyEnvironmentServer(Node):
     def handle_modified_environment(self, request, response):
         """
         To add disturbances, paste the following in a terminal:
-          rosservice call /env/modify_environment "update_disturbance"
-          rosservice call /env/modify_environment "update_actuation"
+          ros2 service call /env/modify_environment refinecbf_ros2/srv/ModifyEnvironment "{'modification': 'dist'}"
+          ros2 service call /env/modify_environment refinecbf_ros2/srv/ModifyEnvironment "{'modification': 'action'}"
+
         """
         modification_request = request.modification
-        if modification_request == "update_disturbance":
+        if modification_request == "dist":
             self.update_disturbances()
-            response.output = "Disturbance Updated"
-        elif modification_request == "update_actuation":
+            response.status = "Disturbance Updated"
+        elif modification_request == "action":
             self.update_actuation()
-            response.output = "Actuation Updated"
+            response.status = "Actuation Updated"
         else:
-            response.output = "Invalid modification request"
+            response.status = "Invalid modification request"
         return response
 
 
