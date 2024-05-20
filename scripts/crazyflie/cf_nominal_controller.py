@@ -70,11 +70,18 @@ class CrazyflieNominalControl(NominalController):
         umax = np.array([self.max_roll, self.max_pitch, np.inf, self.max_thrust])
         umin[self.safety_controls_idis] = np.array(self.config.control_space["lo"])
         umax[self.safety_controls_idis] = np.array(self.config.control_space["hi"])
-        self.controller = lambda x, t: np.clip(self.u_target + self.gain @ (x - self.target), umin, umax)
+        self.umin = umin
+        self.umax = umax
+        # self.controller = lambda x, t: np.clip(self.u_target + self.gain @ (x - self.target), umin, umax)
+        self.controller = lambda x, t: self.controller_actual(x, t)
         self.state_buffer = deque([], int(0.2 * self.controller_rate))  # Last 0.2 seconds of states as average
         self.avg_state = np.zeros_like(self.target)
         self.start_controller()
         
+    def controller_actual(self, x, t):
+        random_thrust_offset = np.random.uniform(0.0, 0.0)
+        return np.clip(self.u_target + self.gain @ (x - self.target), self.umin, self.umax) + np.array([0.0, 0.0, 0.0, random_thrust_offset])
+
     def calibrate_controller_callback(self, goal_handle):
         self.get_logger().info(f"Current u_target: {self.u_target[3]}")
         # self.calibration_state = np.array(goal_handle.request.position.value)
