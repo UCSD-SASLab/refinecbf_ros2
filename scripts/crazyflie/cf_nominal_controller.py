@@ -77,7 +77,9 @@ class CrazyflieNominalControl(NominalController):
         
     def calibrate_controller_callback(self, goal_handle):
         self.get_logger().info(f"Current u_target: {self.u_target[3]}")
-        self.calibration_state = np.array(goal_handle.request.position.value)
+        # self.calibration_state = np.array(goal_handle.request.position.value)
+        self.calibration_state = np.zeros(3)
+        self.calibration_state = self.state[:3]
         with self.calibration_lock:
             self.target[:3] = self.calibration_state
         self.get_logger().info(f"Calibrating controlller, at position: {self.calibration_state}")

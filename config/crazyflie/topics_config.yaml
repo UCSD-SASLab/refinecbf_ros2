@@ -7,4 +7,5 @@
       land: "/land"
       target_position: "/target_position"
       stop_setpoints: "/stop_setpoints"
-  
+    actions:
+      calibrate_controller: "/calibrate_controller"
