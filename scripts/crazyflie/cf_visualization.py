@@ -137,7 +137,7 @@ class CrazyflieVisualization(Visualization):
 
         return marker
 
-    def goal_marker(self, control_dict, goal_marker_id):
+    def goal_marker(self, goal_marker_id):
         marker = Marker()
         marker.header.frame_id = "world"
 
@@ -154,8 +154,8 @@ class CrazyflieVisualization(Visualization):
 
         point = Point()
         point.x = 0.0
-        point.y = np.array(control_dict["goal"]["coordinates"])[self.state_safety_idis][0]
-        point.z = np.array(control_dict["goal"]["coordinates"])[self.state_safety_idis][1]
+        point.y = float(self.goal[self.state_safety_idis][0])
+        point.z = float(self.goal[self.state_safety_idis][1])
         marker.points.append(point)
 
         marker.id = goal_marker_id

@@ -11,6 +11,7 @@ import sys
 import os
 import rowan
 from crazyflie_interfaces.srv import NotifySetpointsStop, Land, Takeoff
+from crazyflie_interfaces.msg import FullState
 from rclpy.action import ActionClient
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 from template.hw_interface import BaseInterface
@@ -41,6 +42,7 @@ class CrazyflieInterface(BaseInterface):
                 ("services.land", rclpy.Parameter.Type.STRING),
                 ("services.stop_setpoints", rclpy.Parameter.Type.STRING),
                 ("actions.calibrate_controller", rclpy.Parameter.Type.STRING),
+                ("topics.internal_setpoint", rclpy.Parameter.Type.STRING)
             ],
         )
         self.in_flight_flag_topic = self.get_parameter("topics.in_flight").value
@@ -72,6 +74,9 @@ class CrazyflieInterface(BaseInterface):
 
         self.target_position_topic = self.get_parameter("services.target_position").value
         self.lqr_target_service = self.create_client(HighLevelCommand, self.target_position_topic)
+
+        self.internal_setpoint_topic = self.get_parameter("topics.internal_setpoint").value
+        self.internal_setpoint_pub = self.create_publisher(Array, self.internal_setpoint_topic, 10)
 
         self.calibrate_controller_topic = self.get_parameter("actions.calibrate_controller").value
         self.calibrate_controller_client = ActionClient(self, Calibration, self.calibrate_controller_topic)
@@ -144,7 +149,12 @@ class CrazyflieInterface(BaseInterface):
             else:
                 # Send external setpoint control to the drone nominal controller
                 self.lqr_target_service.call_async(request)
-                response.response = "New target set: x={}, y={}, z={}".format(*np.array(request.position.value))
+                full_state = np.zeros(6)
+                full_state[:3] = request.position.value
+                full_state_msg = Array()
+                full_state_msg.value = list(full_state)
+                self.internal_setpoint_pub.publish(full_state_msg)
+                response.response = "New target location: x={}, y={}, z={}".format(*np.array(request.position.value))
         elif request.command == "calibrate":
             if not self.is_in_flight:
                 response.response = "Not in flight (calibrate command ignored)"

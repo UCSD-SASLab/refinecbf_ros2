@@ -29,6 +29,8 @@ class Visualization(Node):
         # Control Dict with Goal Params:
         control_config = load_parameters(self.get_parameter("robot").value, self.get_parameter("exp").value, "control")
         self.nominal_control_dict = control_config["nominal"]
+
+        self.goal = np.array(self.nominal_control_dict["goal"]["coordinates"])
         # Subscriber for SDF and VF:
         self.declare_parameters(
             "",
@@ -41,6 +43,7 @@ class Visualization(Node):
                 ("topics.sdf_marker", rclpy.Parameter.Type.STRING),
                 ("topics.vf_marker", rclpy.Parameter.Type.STRING),
                 ("topics.goal_marker", rclpy.Parameter.Type.STRING),
+                ("topics.internal_setpoint", rclpy.Parameter.Type.STRING),
             ],
         )
 
@@ -86,6 +89,8 @@ class Visualization(Node):
         # Publisher for Goal:
         goal_marker_topic = self.get_parameter("topics.goal_marker").value
         self.goal_marker_publisher = self.create_publisher(Marker, goal_marker_topic, 10)
+        goal_update_topic = self.get_parameter("topics.internal_setpoint").value
+        self.goal_marker_update_sub = self.create_subscription(Array, goal_update_topic, self.callback_goal_marker, 10)
 
         # load Obstacle and Boundary dictionaries
         self.obstacle_dict = self.config.obstacle_list
@@ -106,7 +111,7 @@ class Visualization(Node):
     def zero_level_set_contour(self, vf):
         raise NotImplementedError("Must Be Subclassed")
 
-    def goal_marker(self, control_dict, goal_marker_id):
+    def goal_marker(self, goal_marker_id):
         raise NotImplementedError("Must Be Subclassed")
 
     def add_obstacles(self):
@@ -131,9 +136,9 @@ class Visualization(Node):
             marker = self.vf_marker(points, vf_marker_id + i)
             self.vf_marker_publisher.publish(marker)
 
-    def add_goal(self):
+    def update_goal(self):
         goal_marker_id = 300
-        marker = self.goal_marker(self.nominal_control_dict, goal_marker_id)
+        marker = self.goal_marker(goal_marker_id)
         self.goal_marker_publisher.publish(marker)
 
     def callback_sdf_pubsub(self, sdf_msg):
@@ -155,6 +160,10 @@ class Visualization(Node):
     def callback_obstacle(self, obstacle_msg):
         self.active_obstacle_names = obstacle_msg.obstacle_names
 
+    def callback_goal_marker(self, goal_msg):
+        self.goal = np.array(goal_msg.value)
+        self.get_logger().info(f"Goal Updated: {self.goal}")
+
     def callback_state(self, state_msg):
         self.robot_state = jnp.reshape(np.array(state_msg.value)[self.state_safety_idis], (-1, 1)).T
         if hasattr(self, "vf"):
@@ -163,5 +172,5 @@ class Visualization(Node):
             self.update_sdf_contour()
         if hasattr(self, "obstacle_dict"):
             self.add_obstacles()
-        if hasattr(self, "nominal_control_dict"):
-            self.add_goal()
+        if hasattr(self, "goal"):
+            self.update_goal()
