@@ -232,10 +232,10 @@ class CrazyflieInterface(BaseInterface):
     def process_disturbance(self, disturbance_in_msg):
         disturbance_in = disturbance_in_msg.value
         disturbance_out_msg = self.disturbance_out_msg_type()
-        disturbance_out_msg.pose.pose.position.y = disturbance_in[0]
-        disturbance_out_msg.pose.pose.position.z = disturbance_in[1]
-        disturbance_out_msg.twist.twist.linear.y = disturbance_in[2]
-        disturbance_out_msg.twist.twist.linear.z = disturbance_in[3]
+        disturbance_out_msg.pose.position.y = disturbance_in[0]
+        disturbance_out_msg.pose.position.z = disturbance_in[1]
+        disturbance_out_msg.twist.linear.y = disturbance_in[2]
+        disturbance_out_msg.twist.linear.z = disturbance_in[3]
         return disturbance_out_msg
 
     def override_safe_control(self):

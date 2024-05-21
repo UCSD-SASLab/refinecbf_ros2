@@ -134,6 +134,7 @@ def generate_launch_description():
                 SetRemap('/cf231/takeoff', cf_topics_config['services']['takeoff']),
                 SetRemap('/cf231/notify_setpoints_stop', cf_topics_config['services']['stop_setpoints']),
                 SetRemap('/cf231/cmd_vel_legacy', topics_config['topics']['robot_safe_control']),
+                SetRemap('/cf231/disturbance', topics_config['topics']['robot_disturbance']),
 
                 IncludeLaunchDescription(
                     PythonLaunchDescriptionSource([
