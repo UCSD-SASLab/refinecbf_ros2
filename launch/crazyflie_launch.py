@@ -5,6 +5,7 @@ from launch import LaunchDescription, LaunchContext
 from launch_ros.actions import Node, SetRemap
 from launch_ros.substitutions import FindPackageShare
 from launch.actions import DeclareLaunchArgument, GroupAction
+from launch.conditions import LaunchConfigurationEquals
 from launch.substitutions import LaunchConfiguration
 from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -88,6 +89,7 @@ def generate_launch_description():
             package='refinecbf_ros2',
             executable='disturbance_node.py',
             name='disturbance_node',
+            condition=LaunchConfigurationEquals('backend', 'sim'),
             output='screen',
             parameters=[topics_config_path,
                         {'robot': robot,
