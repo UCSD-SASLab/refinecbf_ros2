@@ -61,6 +61,9 @@ class HJReachabilityNode(Node):
         self.declare_parameter("initial_vf_file", "None")
         self.declare_parameter("update_vf_online", True)
 
+        self.declare_parameter("sensing_online", True)
+        self.sensing_online = self.get_parameter("sensing_online").value
+
         control_config = load_parameters(self.get_parameter("robot").value, self.get_parameter("exp").value, "control")
 
         self.vf_update_method = self.get_parameter("vf_update_method").value
@@ -125,15 +128,18 @@ class HJReachabilityNode(Node):
             self.vf_pub = self.create_publisher(Bool, self.vf_topic, 10)
 
         # Subscribers setup
-        disturbance_update_topic = self.get_parameter("topics.disturbance_update").value
-        self.disturbance_update_sub = self.create_subscription(
-            HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 10
-        )
+        if self.sensing_online:
+            disturbance_update_topic = self.get_parameter("topics.disturbance_update").value
+            self.disturbance_update_sub = self.create_subscription(
+                HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 1
+            )
 
-        actuation_update_topic = self.get_parameter("topics.actuation_update").value
-        self.actuation_update_sub = self.create_subscription(
-            HiLoArray, actuation_update_topic, self.callback_actuation_update, 10
-        )
+            actuation_update_topic = self.get_parameter("topics.actuation_update").value
+            self.actuation_update_sub = self.create_subscription(
+                HiLoArray, actuation_update_topic, self.callback_actuation_update, 1
+            )
+        else:
+            self.get_logger().warn("No sensing, disturbance and actuation updates are not being processed")
 
         # Start updating the value function
         self.publish_initial_vf()

@@ -50,6 +50,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'uri', default_value='',
             description='Robot number'),
+        DeclareLaunchArgument(
+            'sensing_online', default_value='True',
+            description='Do we sense changes in the environment?'
+        ),
 
         # Nodes configurations
         Node(
@@ -125,6 +129,7 @@ def generate_launch_description():
                 'vf_update_method': LaunchConfiguration('vf_update_method'),
                 'vf_update_accuracy': LaunchConfiguration('vf_update_accuracy'),
                 'use_sim_time': PythonExpression(["'", LaunchConfiguration('backend'), "' == 'sim'"]),
+                'sensing_online': LaunchConfiguration('sensing_online'),
             }.items()
         ),
         GroupAction(

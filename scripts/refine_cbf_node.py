@@ -100,20 +100,23 @@ class SafetyFilterNode(Node):
                                                             10, callback_group=self.other_callback_group)
 
         filtered_control_topic = self.get_parameter("topics.cbf_safe_control").value
-        self.pub_filtered_control = self.create_publisher(Array, filtered_control_topic, 10)
-
-        actuation_update_topic = self.get_parameter("topics.actuation_update").value
-        self.actuation_update_sub = self.create_subscription(
-            HiLoArray, actuation_update_topic, self.callback_actuation_update, 
-            10, callback_group=self.other_callback_group
-        )
-        # Optional disturbance updates
-        if self.config.disturbance_space["n_dims"] != 0:
-            disturbance_update_topic = self.get_parameter("topics.disturbance_update").value
-            self.disturbance_update_sub = self.create_subscription(
-                HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 
-                10, callback_group=self.other_callback_group
+        self.declare_parameter("sensing_online", rclpy.Parameter.Type.BOOL)
+        self.sensing_online = self.get_parameter("sensing_online").value
+        
+        if self.sensing_online:
+            actuation_update_topic = self.get_parameter("topics.actuation_update").value
+            self.actuation_update_sub = self.create_subscription(
+                HiLoArray, actuation_update_topic, self.callback_actuation_update, 
+                1, callback_group=self.other_callback_group
             )
+
+            # Optional disturbance updates
+            if self.config.disturbance_space["n_dims"] != 0:
+                disturbance_update_topic = self.get_parameter("topics.disturbance_update").value
+                self.disturbance_update_sub = self.create_subscription(
+                    HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 
+                    1, callback_group=self.other_callback_group
+                )
 
         # Value function publishing
         value_function_topic = self.get_parameter("topics.value_function").value
