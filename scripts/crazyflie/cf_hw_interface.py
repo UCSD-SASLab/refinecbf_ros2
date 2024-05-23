@@ -27,7 +27,7 @@ class CrazyflieInterface(BaseInterface):
     state_msg_type = Odometry
     control_out_msg_type = Twist
     external_control_msg_type = Twist
-    disturbance_out_msg_type = Odometry  # TEMP
+    disturbance_out_msg_type = FullState
 
     def __init__(self):
         super().__init__("crazyflie_interface")
@@ -76,7 +76,7 @@ class CrazyflieInterface(BaseInterface):
         self.lqr_target_service = self.create_client(HighLevelCommand, self.target_position_topic)
 
         self.internal_setpoint_topic = self.get_parameter("topics.internal_setpoint").value
-        self.internal_setpoint_pub = self.create_publisher(Array, self.internal_setpoint_topic, 10)
+        self.internal_setpoint_pub = self.create_publisher(Array, self.internal_setpoint_topic, 1)
 
         self.calibrate_controller_topic = self.get_parameter("actions.calibrate_controller").value
         self.calibrate_controller_client = ActionClient(self, Calibration, self.calibrate_controller_topic)
@@ -89,6 +89,7 @@ class CrazyflieInterface(BaseInterface):
                 ("control.limits.max_thrust", control_config["limits"]["max_thrust"]),
                 ("control.limits.min_thrust", control_config["limits"]["min_thrust"]),
                 ("control.limits.max_roll", control_config["limits"]["max_roll"]),
+                ("control.limits.min_roll", control_config["limits"]["min_roll"]),
                 ("control.limits.max_pitch", control_config["limits"]["max_pitch"]),
                 ("control.limits.max_yawrate", control_config["limits"]["max_yawrate"]),
             ],
@@ -96,6 +97,7 @@ class CrazyflieInterface(BaseInterface):
         self.max_thrust = self.get_parameter("control.limits.max_thrust").value
         self.min_thrust = self.get_parameter("control.limits.min_thrust").value
         self.max_roll = self.get_parameter("control.limits.max_roll").value
+        self.min_roll = self.get_parameter("control.limits.min_roll").value
         self.max_pitch = self.get_parameter("control.limits.max_pitch").value
         self.max_yawrate = self.get_parameter("control.limits.max_yawrate").value
 
@@ -114,7 +116,7 @@ class CrazyflieInterface(BaseInterface):
             else:
                 req = Takeoff.Request()
                 req.group_mask = 0  # all groups?
-                req.height = 1.0
+                req.height = 0.5
                 duration = 2.0
                 req.duration = rclpy.duration.Duration(seconds=duration).to_msg()
                 self.takeoffService.call_async(req)
@@ -217,7 +219,7 @@ class CrazyflieInterface(BaseInterface):
         rpyt_converted = rpyt.copy()
         rpyt_converted[:3] = np.degrees(rpyt[:3])
         rpyt_converted[3] = rpyt[3] * 4096  # (0-16) -> (0-65535)
-        min_values = np.array([-self.max_roll, -self.max_pitch, -self.max_yawrate, self.min_thrust])
+        min_values = np.array([self.min_roll, -self.max_pitch, -self.max_yawrate, self.min_thrust])
         max_values = np.array([self.max_roll, self.max_pitch, self.max_yawrate, self.max_thrust])
         rpyt_converted = np.minimum(max_values, np.maximum(min_values, rpyt_converted))
         return rpyt_converted
