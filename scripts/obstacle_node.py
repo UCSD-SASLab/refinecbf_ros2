@@ -48,18 +48,18 @@ class ObstacleNode(Node):
         )
         sdf_update_topic = self.get_parameter("topics.sdf_update").value
         if self.vf_update_method == "pubsub":
-            self.sdf_update_pub = self.create_publisher(ValueFunctionMsg, sdf_update_topic, 10)
+            self.sdf_update_pub = self.create_publisher(ValueFunctionMsg, sdf_update_topic, 1)
         elif self.vf_update_method == "file":
-            self.sdf_update_pub = self.create_publisher(Bool, sdf_update_topic, 10)
+            self.sdf_update_pub = self.create_publisher(Bool, sdf_update_topic, 1)
         else:
             raise NotImplementedError(f"{self.vf_update_method} is not a valid vf update method")
 
         obstacle_update_topic = self.get_parameter("topics.obstacle_update").value
-        self.obstacle_update_pub = self.create_publisher(Obstacles, obstacle_update_topic, 10)
+        self.obstacle_update_pub = self.create_publisher(Obstacles, obstacle_update_topic, 1)
 
         # Subscribers:
         cbf_state_topic = self.get_parameter("topics.cbf_state").value
-        self.subscription = self.create_subscription(Array, cbf_state_topic, self.callback_state, 10)
+        self.subscription = self.create_subscription(Array, cbf_state_topic, self.callback_state, 1)
 
         # Services:
         activate_obstacle_service = self.get_parameter("services.activate_obstacle").value
@@ -99,12 +99,12 @@ class ObstacleNode(Node):
             self.update_active_obstacles()
 
     def update_sdf(self):
-        sdf = hj.utils.multivmap(self.build_sdf(), jnp.arange(self.config.grid.ndim))(self.config.grid.states)
+        sdf = hj.utils.multivmap(self.build_sdf(), jnp.arange(self.config.grid.ndim))(self.config.grid.states) # * 10
         self.get_logger().info("Share Safe SDF {:.2f}".format(((sdf >= 0).sum() / sdf.size) * 100))
         if self.vf_update_method == "pubsub":
             self.sdf_update_pub.publish(ValueFunctionMsg(vf=sdf.flatten()))
         else:  # self.vf_update_method == "file"
-            np.save("./sdf.npy", sdf)
+            np.save("sdf.npy", sdf)
             self.sdf_update_pub.publish(Bool(data=True))
 
     def update_active_obstacles(self):

@@ -15,8 +15,8 @@ from template.nominal_controller import NominalController
 
 class JackalNominalControl(NominalController):
     def __init__(self):
-        super().__init__()
         self.config = Config(hj_setup=True)
+        super().__init__()
         self.dynamics = self.config.dynamics
         self.hj_dynamics = self.config.hj_dynamics
 

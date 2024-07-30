@@ -56,15 +56,15 @@ class BaseInterface(Node):
         # Generate the update get parameters
         self.robot_state_topic = self.get_parameter("topics.robot_state").value
         cbf_state_topic = self.get_parameter("topics.cbf_state").value
-        self.state_pub = self.create_publisher(Array, cbf_state_topic, 10)
+        self.state_pub = self.create_publisher(Array, cbf_state_topic, 1)
 
         robot_safe_control_topic = self.get_parameter("topics.robot_safe_control").value
         self.cbf_safe_control_topic = self.get_parameter("topics.cbf_safe_control").value
-        self.safe_control_pub = self.create_publisher(self.control_out_msg_type, robot_safe_control_topic, 10)
+        self.safe_control_pub = self.create_publisher(self.control_out_msg_type, robot_safe_control_topic, 1)
 
         self.robot_external_control_topic = self.get_parameter("topics.robot_external_control").value
         cbf_external_control_topic = self.get_parameter("topics.cbf_external_control").value
-        self.external_control_pub = self.create_publisher(Array, cbf_external_control_topic, 10)
+        self.external_control_pub = self.create_publisher(Array, cbf_external_control_topic, 1)
 
         high_level_command_srv = self.get_parameter("services.highlevel_command").value
         self.create_service(HighLevelCommand, high_level_command_srv, self.handle_high_level_command)
@@ -83,16 +83,16 @@ class BaseInterface(Node):
             )
             robot_disturbance_topic = self.get_parameter("topics.robot_disturbance").value
             self.simulated_disturbance_topic = self.get_parameter("topics.simulated_disturbance").value
-            self.disturbance_pub = self.create_publisher(self.disturbance_out_msg_type, robot_disturbance_topic, 10)
+            self.disturbance_pub = self.create_publisher(self.disturbance_out_msg_type, robot_disturbance_topic, 1)
 
     def init_subscribers(self):
-        self.create_subscription(self.state_msg_type, self.robot_state_topic, self.callback_state, 10)
-        self.create_subscription(Array, self.cbf_safe_control_topic, self.callback_safe_control, 10)
+        self.create_subscription(self.state_msg_type, self.robot_state_topic, self.callback_state, 1)
+        self.create_subscription(Array, self.cbf_safe_control_topic, self.callback_safe_control, 1)
         self.create_subscription(
-            self.external_control_msg_type, self.robot_external_control_topic, self.callback_external_control, 10
+            self.external_control_msg_type, self.robot_external_control_topic, self.callback_external_control, 1
         )
         if not self.number_disturbance_dims == 0:
-            self.create_subscription(Array, self.simulated_disturbance_topic, self.callback_disturbance, 10)
+            self.create_subscription(Array, self.simulated_disturbance_topic, self.callback_disturbance, 1)
 
     def callback_state(self, state_msg):
         """

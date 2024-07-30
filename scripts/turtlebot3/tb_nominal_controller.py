@@ -36,10 +36,6 @@ class TurtlebotNominalControl(NominalController):
         self.target = np.array(self.control_config["nominal"]["goal"]["coordinates"])
         self.controller_type = self.get_parameter("controller_type").value
         if self.controller_type == "HJR":
-            self.declare_parameter("env_config_file", rclpy.Parameter.Type.STRING)
-            env_config_file = self.get_parameter("env_config_file").value
-            with open(os.path.join(get_package_share_directory("refinecbf_ros2"), "config", env_config_file), "r") as f:
-                self.env_config = yaml.safe_load(f)
             self.umax_hjr = np.array(self.env_config["control_space"]["hi"])
             self.umin_hjr = np.array(self.env_config["control_space"]["lo"])
             self.padding = np.array(self.control_config["nominal"]["goal"]["padding"])

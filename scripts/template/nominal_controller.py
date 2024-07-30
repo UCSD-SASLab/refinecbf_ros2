@@ -41,12 +41,12 @@ class NominalController(Node):
         publish_ext_control_flag_topic = self.get_parameter("topics.publish_external_control_flag").value
 
         # Initialize subscribers and publishers
-        self.state_sub = self.create_subscription(Array, state_topic, self.callback_state, 10)
-        self.control_pub = self.create_publisher(Array, nominal_control_topic, 10)
+        self.state_sub = self.create_subscription(Array, state_topic, self.callback_state, 1)
+        self.control_pub = self.create_publisher(Array, nominal_control_topic, 1)
         self.external_control_sub = self.create_subscription(
-            Array, external_control_topic, self.callback_external_control, 10
+            Array, external_control_topic, self.callback_external_control, 1
         )
-        self.publish_ext_control_flag_pub = self.create_publisher(Bool, publish_ext_control_flag_topic, 10)
+        self.publish_ext_control_flag_pub = self.create_publisher(Bool, publish_ext_control_flag_topic, 1)
 
         # Initialize control variables
         self.external_control = None

@@ -75,11 +75,11 @@ class HJReachabilityNode(Node):
 
         if self.vf_update_method == "pubsub":
             self.sdf_subscriber = self.create_subscription(
-                ValueFunctionMsg, self.sdf_update_topic, self.callback_sdf_update_pubsub, 10
+                ValueFunctionMsg, self.sdf_update_topic, self.callback_sdf_update_pubsub, 1
             )
         elif self.vf_update_method == "file":
             self.sdf_subscriber = self.create_subscription(
-                Bool, self.sdf_update_topic, self.callback_sdf_update_file, 10
+                Bool, self.sdf_update_topic, self.callback_sdf_update_file, 1
             )
         else:
             raise NotImplementedError(f"{self.vf_update_method} is not a valid vf update method")
@@ -174,6 +174,7 @@ class HJReachabilityNode(Node):
         max_disturbance = msg.hi
         min_disturbance = msg.lo
         self.disturbance_space = hj.sets.Box(lo=jnp.array(min_disturbance), hi=jnp.array(max_disturbance))
+        self.get_logger().info(f"Disturbance space updated to {self.disturbance_space}")
         self.update_dynamics()  # FIXME:Check whether this is required or happens automatically
 
     def callback_actuation_update(self, msg):
@@ -237,18 +238,15 @@ class HJReachabilityNode(Node):
         while rclpy.ok():
             if self.update_vf_flag:
                 self.get_logger().info(f"Share of safe cells: {np.sum(self.vf >= 0) / self.vf.size:.3f}", throttle_duration_sec=5.0)
-                time_now = self.get_clock().now().seconds_nanoseconds()[0]
                 new_values = hj.step(
                     self.solver_settings,
                     self.hj_dynamics,
                     self.grid,
                     0.0,
                     self.vf.copy(),
-                    -0.5,
+                    -0.1,
                     progress_bar=False,
                 )
-                elapsed_time = self.get_clock().now().seconds_nanoseconds()[0] - time_now
-                self.get_logger().info(f"Time taken to calculate vf: {elapsed_time:.2f}", throttle_duration_sec=5.0)
                 self.vf = new_values
                 if self.vf_update_method == "pubsub":
                     self.vf_pub.publish(ValueFunctionMsg(vf=self.vf.flatten().tolist()))
