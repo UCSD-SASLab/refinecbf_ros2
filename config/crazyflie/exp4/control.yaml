@@ -1,0 +1,50 @@
+nominal:
+  goal:
+    coordinates:
+      - 0.0
+      - 2.2
+      - 0.7
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+    gain:
+    - [0.0, 0.2, 0.0, 0.0, 0.2, 0.0, 0.0]
+    - [0.2, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0]
+    - [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 20.0]
+    - [0.0, 0.0, -10.5, 0.0, 0.0, -10.5, 0.0]
+    u_ref:
+      - 0.0
+      - 0.0
+      - 0.0
+      # - 10.8  # old wings
+      - 10.85  # new wings 
+      # - 11.0
+      # - 11.0  # sim setting
+  frequency: 50.0
+
+  path_planning:
+    enable: False  # can be overridden in launch
+    distance_threshold: 0.1
+    weighting: [1.4, 1.0, 0.0, 0.0]
+
+limits:
+  max_thrust: 63000  # (0-16) -> (0-65535), ~40000 is hover
+  min_thrust: 28000  # 33000
+  # max_roll: 30.0
+  max_roll: 18.0  # works for sim
+  # max_roll: 3.0  # works for real (maybe) -> bigger roll seems to increase offshoot in y
+  min_roll: -18.0
+  max_pitch: 30.0
+  max_yawrate: 100.0
+  # max_yawrate: 0.0
+
+asif:
+  gamma: 1.0
+  slack: False  # True doesn't work
+
+initial_cbf:
+  Parameters:
+    scaling: [5.0, 4.0, 0.5, 0.5]
+    center: [2.5, 1.0, 0.0, 0.0]
+    offset: 2.0

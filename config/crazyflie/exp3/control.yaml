@@ -1,9 +1,9 @@
 nominal:
   goal:
     coordinates:
-      - 0.0
+      - 1.2
       - 2.5
-      - 0.5
+      - 0.7
       - 0.0
       - 0.0
       - 0.0
@@ -11,32 +11,33 @@ nominal:
     gain:
     - [0.0, 0.2, 0.0, 0.0, 0.2, 0.0, 0.0]
     - [0.2, 0.0, 0.0, 0.2, 0.0, 0.0, 0.0]
-    - [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 20.0]
-    - [0.0, 0.0, -10.5, 0.0, 0.0, -10.5, 0.0]
+    - [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    - [0.0, 0.0, -5.0, 0.0, 0.0, -5.0, 0.0]
     u_ref:
       - 0.0
       - 0.0
       - 0.0
-      - 11.0
+      - 10.8 
       # - 12.0  # sim setting
       # - 11.5
-  frequency: 50.0
+  frequency: 100.0
 
 limits:
   max_thrust: 65000  # (0-16) -> (0-65535), ~40000 is hover
-  min_thrust: 20000
+  min_thrust: 16000
   # max_roll: 30.0
-  max_roll: 15.0
-  min_roll: -15.0
+  max_roll: 12.0  # works for sim
+  # max_roll: 3.0  # works for real (maybe)
+  min_roll: -12.0
   max_pitch: 30.0
   max_yawrate: 30.0
 
 asif:
-  gamma: 1.0
+  gamma: 0.1
   slack: False  # True doesn't work
 
 initial_cbf:
   Parameters:
-    scaling: [2.0, 4.0, 0.5, 0.5]
-    center: [2.3, 0.8, 0.0, 0.0]
-    offset: 1.0
+    scaling: [5.0, 4.0, 0.5, 0.5]
+    center: [2.5, 1.0, 0.0, 0.0]
+    offset: 2.0
