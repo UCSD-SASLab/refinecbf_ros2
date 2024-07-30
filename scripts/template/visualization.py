@@ -31,6 +31,8 @@ class Visualization(Node):
         self.nominal_control_dict = control_config["nominal"]
 
         self.goal = np.array(self.nominal_control_dict["goal"]["coordinates"])
+        if "path_planning" in self.nominal_control_dict:
+            self.intermediate_target = self.goal.copy()
         # Subscriber for SDF and VF:
         self.declare_parameters(
             "",
@@ -43,7 +45,9 @@ class Visualization(Node):
                 ("topics.sdf_marker", rclpy.Parameter.Type.STRING),
                 ("topics.vf_marker", rclpy.Parameter.Type.STRING),
                 ("topics.goal_marker", rclpy.Parameter.Type.STRING),
-                ("topics.internal_setpoint", rclpy.Parameter.Type.STRING),
+                ("topics.target_state", rclpy.Parameter.Type.STRING),
+                ("topics.intermediate_target_marker", rclpy.Parameter.Type.STRING),
+                ("topics.intermediate_target_state", rclpy.Parameter.Type.STRING),
             ],
         )
 
@@ -55,43 +59,49 @@ class Visualization(Node):
 
         if self.vf_update_method == "pubsub":
             self.sdf_update_sub = self.create_subscription(
-                ValueFunctionMsg, sdf_update_topic, self.callback_sdf_pubsub, 10
+                ValueFunctionMsg, sdf_update_topic, self.callback_sdf_pubsub, 1
             )
-            self.vf_update_sub = self.create_subscription(ValueFunctionMsg, vf_topic, self.callback_vf_pubsub, 10)
+            self.vf_update_sub = self.create_subscription(ValueFunctionMsg, vf_topic, self.callback_vf_pubsub, 1)
         elif self.vf_update_method == "file":
-            self.sdf_update_sub = self.create_subscription(Bool, sdf_update_topic, self.callback_sdf_file, 10)
-            self.vf_update_sub = self.create_subscription(Bool, vf_topic, self.callback_vf_file, 10)
+            self.sdf_update_sub = self.create_subscription(Bool, sdf_update_topic, self.callback_sdf_file, 1)
+            self.vf_update_sub = self.create_subscription(Bool, vf_topic, self.callback_vf_file, 1)
         else:
             raise NotImplementedError("{} is not a valid vf update method".format(self.vf_update_method))
 
         obstacle_update_topic = self.get_parameter("topics.obstacle_update").value
         self.obstacle_update_sub = self.create_subscription(
-            Obstacles, obstacle_update_topic, self.callback_obstacle, 10
+            Obstacles, obstacle_update_topic, self.callback_obstacle, 1
         )
         self.active_obstacle_names = []
 
         # Subscriber for Robot State:
         cbf_state_topic = self.get_parameter("topics.cbf_state").value
-        self.state_sub = self.create_subscription(Array, cbf_state_topic, self.callback_state, 10)
+        self.state_sub = self.create_subscription(Array, cbf_state_topic, self.callback_state, 1)
 
         # Publisher for Marker messages
         obstacle_marker_topic = self.get_parameter("topics.obstacle_marker").value
-        self.obstacle_marker_publisher = self.create_publisher(Marker, obstacle_marker_topic, 10)
+        self.obstacle_marker_publisher = self.create_publisher(Marker, obstacle_marker_topic, 1)
 
         # Publisher for SDF
         sdf_marker_topic = self.get_parameter("topics.sdf_marker").value
-        self.sdf_marker_publisher = self.create_publisher(Marker, sdf_marker_topic, 10)
+        self.sdf_marker_publisher = self.create_publisher(Marker, sdf_marker_topic, 1)
 
         # Publisher for VF
         vf_marker_topic = self.get_parameter("topics.vf_marker").value
-        self.vf_marker_publisher = self.create_publisher(Marker, vf_marker_topic, 10)
+        self.vf_marker_publisher = self.create_publisher(Marker, vf_marker_topic, 1)
 
         # Publisher for Goal:
         goal_marker_topic = self.get_parameter("topics.goal_marker").value
-        self.goal_marker_publisher = self.create_publisher(Marker, goal_marker_topic, 10)
-        goal_update_topic = self.get_parameter("topics.internal_setpoint").value
-        self.goal_marker_update_sub = self.create_subscription(Array, goal_update_topic, self.callback_goal_marker, 10)
+        self.goal_marker_publisher = self.create_publisher(Marker, goal_marker_topic, 1)
+        goal_update_topic = self.get_parameter("topics.target_state").value
+        self.goal_marker_update_sub = self.create_subscription(Array, goal_update_topic, self.callback_goal_marker, 1)
 
+        # Publisher for Intermediate Target:
+        intermediate_target_marker_topic = self.get_parameter("topics.intermediate_target_marker").value
+        self.intermediate_target_marker_publisher = self.create_publisher(Marker, intermediate_target_marker_topic, 1)
+        intermediate_target_update_topic = self.get_parameter("topics.intermediate_target_state").value
+        self.intermediate_target_update_sub = self.create_subscription(Array, intermediate_target_update_topic, self.callback_intermediate_target, 1)
+        
         # load Obstacle and Boundary dictionaries
         self.obstacle_dict = self.config.obstacle_list
         self.boundary_dict = self.config.boundary_env
@@ -111,7 +121,7 @@ class Visualization(Node):
     def zero_level_set_contour(self, vf):
         raise NotImplementedError("Must Be Subclassed")
 
-    def goal_marker(self, goal_marker_id):
+    def goal_marker(self, goal, goal_marker_id):
         raise NotImplementedError("Must Be Subclassed")
 
     def add_obstacles(self):
@@ -138,8 +148,13 @@ class Visualization(Node):
 
     def update_goal(self):
         goal_marker_id = 300
-        marker = self.goal_marker(goal_marker_id)
+        marker = self.goal_marker(self.goal, goal_marker_id)
         self.goal_marker_publisher.publish(marker)
+
+    def update_intermediate_target(self):
+        intermediate_target_marker_id = 300
+        marker = self.goal_marker(self.intermediate_target, intermediate_target_marker_id)
+        self.intermediate_target_marker_publisher.publish(marker)
 
     def callback_sdf_pubsub(self, sdf_msg):
         self.sdf = np.array(sdf_msg.vf).reshape(self.config.grid_shape)
@@ -164,6 +179,9 @@ class Visualization(Node):
         self.goal = np.array(goal_msg.value)
         self.get_logger().info(f"Goal Updated: {self.goal}")
 
+    def callback_intermediate_target(self, target_msg):
+        self.intermediate_target = np.array(target_msg.value)
+
     def callback_state(self, state_msg):
         self.robot_state = jnp.reshape(np.array(state_msg.value)[self.state_safety_idis], (-1, 1)).T
         if hasattr(self, "vf"):
@@ -174,3 +192,5 @@ class Visualization(Node):
             self.add_obstacles()
         if hasattr(self, "goal"):
             self.update_goal()
+        if hasattr(self, "intermediate_target"):
+            self.update_intermediate_target()

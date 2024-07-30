@@ -42,7 +42,7 @@ class CrazyflieInterface(BaseInterface):
                 ("services.land", rclpy.Parameter.Type.STRING),
                 ("services.stop_setpoints", rclpy.Parameter.Type.STRING),
                 ("actions.calibrate_controller", rclpy.Parameter.Type.STRING),
-                ("topics.internal_setpoint", rclpy.Parameter.Type.STRING)
+                ("topics.target_state", rclpy.Parameter.Type.STRING)
             ],
         )
         self.in_flight_flag_topic = self.get_parameter("topics.in_flight").value
@@ -75,7 +75,7 @@ class CrazyflieInterface(BaseInterface):
         self.target_position_topic = self.get_parameter("services.target_position").value
         self.lqr_target_service = self.create_client(HighLevelCommand, self.target_position_topic)
 
-        self.internal_setpoint_topic = self.get_parameter("topics.internal_setpoint").value
+        self.internal_setpoint_topic = self.get_parameter("topics.target_state").value
         self.internal_setpoint_pub = self.create_publisher(Array, self.internal_setpoint_topic, 1)
 
         self.calibrate_controller_topic = self.get_parameter("actions.calibrate_controller").value

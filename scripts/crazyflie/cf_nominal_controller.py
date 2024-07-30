@@ -9,7 +9,8 @@ import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from nominal_controller import NominalController
-from refinecbf_ros2.srv import HighLevelCommand
+from refinecbf_ros2.srv import HighLevelCommand, ProcessState
+from refinecbf_ros2.msg import Array
 from refinecbf_ros2.action import Calibration
 from config import Config
 from collections import deque
@@ -28,6 +29,8 @@ class CrazyflieNominalControl(NominalController):
                 ("services.target_position", rclpy.Parameter.Type.STRING),
                 ("services.calibrate_controller", rclpy.Parameter.Type.STRING),
                 ("actions.calibrate_controller", rclpy.Parameter.Type.STRING),
+                ("services.find_closest_safe_state", rclpy.Parameter.Type.STRING),
+                ("topics.intermediate_target_state", rclpy.Parameter.Type.STRING),
             ],
         )
         self.dynamics = self.config.dynamics
@@ -39,14 +42,18 @@ class CrazyflieNominalControl(NominalController):
                 ("limits.max_thrust", self.control_config["limits"]["max_thrust"]),
                 ("limits.min_thrust", self.control_config["limits"]["min_thrust"]),
                 ("limits.max_roll", self.control_config["limits"]["max_roll"]),
+                ("limits.min_roll", self.control_config["limits"]["min_roll"]),
                 ("limits.max_pitch", self.control_config["limits"]["max_pitch"]),
             ],
         )
         self.max_thrust = self.get_parameter("limits.max_thrust").value
         self.min_thrust = self.get_parameter("limits.min_thrust").value
         self.max_roll = self.get_parameter("limits.max_roll").value
+        self.min_roll = self.get_parameter("limits.min_roll").value
         self.max_pitch = self.get_parameter("limits.max_pitch").value
         self.safety_controls_idis = self.config.safety_controls
+
+        self.safety_states_idis = self.config.safety_states
 
         self.target_position_topic = self.get_parameter("services.target_position").value
         self.target_position_service = self.create_service(
@@ -58,7 +65,15 @@ class CrazyflieNominalControl(NominalController):
         self.calibrate_controller_action = ActionServer(self, Calibration, self.calibrate_controller_topic,
                                                         self.calibrate_controller_callback,
                                                         callback_group=self.calibrate_controller_cb_group)
-        self.target = self.control_config["nominal"]["goal"]["coordinates"]
+        
+        self.declare_parameter("path_planning", rclpy.Parameter.Type.BOOL)
+        self.path_planning = self.get_parameter("path_planning").value
+        if self.path_planning:
+            self.intermediate_target_topic = self.get_parameter("topics.intermediate_target_state").value
+            self.intermediate_target_pub = self.create_publisher(Array, self.intermediate_target_topic, 1)
+            self.find_closest_safe_state_topic = self.get_parameter("services.find_closest_safe_state").value
+            self.find_closest_safe_state_client = self.create_client(ProcessState, self.find_closest_safe_state_topic)
+        self.target = np.array(self.control_config["nominal"]["goal"]["coordinates"])
         self.gain = np.array(self.control_config["nominal"]["goal"]["gain"])
         self.u_target = self.control_config["nominal"]["goal"]["u_ref"]
         self.state = np.zeros_like(self.target)
@@ -66,21 +81,70 @@ class CrazyflieNominalControl(NominalController):
         self.calibration_lock = Lock()
 
         # Initialize parameters
-        umin = np.array([-self.max_roll, -self.max_pitch, -np.inf, self.min_thrust])
+        umin = np.array([self.min_roll, -self.max_pitch, -np.inf, self.min_thrust])
         umax = np.array([self.max_roll, self.max_pitch, np.inf, self.max_thrust])
         umin[self.safety_controls_idis] = np.array(self.config.control_space["lo"])
         umax[self.safety_controls_idis] = np.array(self.config.control_space["hi"])
         self.umin = umin
         self.umax = umax
         # self.controller = lambda x, t: np.clip(self.u_target + self.gain @ (x - self.target), umin, umax)
-        self.controller = lambda x, t: self.controller_actual(x, t)
+        if self.path_planning:
+            if self.control_config["nominal"].get("path_planning") is not None:
+                self.distance_threshold = self.control_config["nominal"]["path_planning"]["distance_threshold"]
+                self.weighting = np.array(self.control_config["nominal"]["path_planning"]["weighting"])
+            else:
+                self.distance_threshold = 0.1
+                self.weighting = np.array([1.0, 1.0, 0.0, 0.0])
+            self.intermediate_target = self.target.copy()
+            self.processing = False
+
+            self.controller = lambda x, t: self.alternative_controller(x, t)
+        else:
+            self.controller = lambda x, t: self.controller_actual(x, t)
         self.state_buffer = deque([], int(0.2 * self.controller_rate))  # Last 0.2 seconds of states as average
         self.avg_state = np.zeros_like(self.target)
+        self.last_update_time = self.get_clock().now()
         self.start_controller()
+    
+    def pub_intermediate_target(self):
+        full_state = np.zeros(6)
+        full_state[:3] = self.intermediate_target[:3]
+        full_state_msg = Array()
+        full_state_msg.value = list(full_state)
+        self.intermediate_target_pub.publish(full_state_msg)
+
+    def update_intermediate_target(self, future):
+        self.get_logger().info(f"New intermediate target")
+        response = future.result()
+        self.intermediate_target[self.safety_states_idis] = np.array(response.processed_state.value)
+        self.pub_intermediate_target()
+        self.processing = False
         
     def controller_actual(self, x, t):
-        random_thrust_offset = np.random.uniform(0.0, 0.0)
+        random_thrust_offset = np.random.uniform(-0.0, 0.0)
         return np.clip(self.u_target + self.gain @ (x - self.target), self.umin, self.umax) + np.array([0.0, 0.0, 0.0, random_thrust_offset])
+    
+    def alternative_controller(self, x, t):
+        # Update intermediate target to match the current target
+        if not np.isclose(self.target[self.safety_states_idis], self.intermediate_target[self.safety_states_idis], atol=1e-2).all():
+            weighting = np.array([1.0, 1.0, 0.0, 0.0])
+            distance = (x - self.intermediate_target)[self.safety_states_idis]
+            time_now = self.get_clock().now()
+            if (not self.processing and 
+                ((np.linalg.norm(distance) <= self.distance_threshold) or 
+                ((time_now - self.last_update_time).nanoseconds / 1e9)  >= 4.0)):
+                self.last_update_time = time_now
+                req = ProcessState.Request()
+                target = Array()
+                target.value = self.target[self.safety_states_idis].tolist()
+                weighting = Array()
+                weighting.value = self.weighting.tolist()
+                req.desired_state = target
+                req.weighting = weighting
+                self.processing = True
+                self.find_closest_safe_state_client.call_async(req).add_done_callback(self.update_intermediate_target)
+
+        return np.clip(self.u_target + self.gain @ (x - self.intermediate_target), self.umin, self.umax)
 
     def calibrate_controller_callback(self, goal_handle):
         self.get_logger().info(f"Current u_target: {self.u_target[3]}")

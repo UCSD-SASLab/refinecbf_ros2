@@ -1,0 +1,5 @@
+# ProcessState.srv
+Array desired_state
+Array weighting
+---
+Array processed_state

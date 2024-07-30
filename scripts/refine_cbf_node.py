@@ -7,6 +7,7 @@ import jax.numpy as jnp
 # Global flag to set a specific platform, must be used at startup.
 jax.config.update('jax_platform_name', 'cpu')
 from refinecbf_ros2.msg import ValueFunctionMsg, Array, HiLoArray
+from refinecbf_ros2.srv import ProcessState
 from example_interfaces.msg import Bool, Float32
 from refine_cbfs import TabularControlAffineCBF
 from cbf_opt import ControlAffineASIF, SlackifiedControlAffineASIF
@@ -14,6 +15,7 @@ from config import Config
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 import numpy as np
+import matplotlib.pyplot as plt
 from utils import load_parameters
 import threading
 
@@ -34,6 +36,7 @@ class SafetyFilterNode(Node):
         self.safety_controls_idis = self.config.safety_controls
         self.vf_update_callback_group = MutuallyExclusiveCallbackGroup()
         self.other_callback_group = ReentrantCallbackGroup()
+        self.service_callback_group = ReentrantCallbackGroup()
         # Parameters (for topics)
         self.declare_parameters(
             "",
@@ -45,6 +48,7 @@ class SafetyFilterNode(Node):
                 ("topics.actuation_update", rclpy.Parameter.Type.STRING),
                 ("topics.disturbance_update", rclpy.Parameter.Type.STRING),
                 ("topics.value_function", rclpy.Parameter.Type.STRING),
+                ("services.find_closest_safe_state", rclpy.Parameter.Type.STRING),
             ],
         )
 
@@ -119,6 +123,9 @@ class SafetyFilterNode(Node):
                     HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 
                     1, callback_group=self.other_callback_group
                 )
+        find_safe_state_service = self.get_parameter("services.find_closest_safe_state").value
+        self.create_service(ProcessState, find_safe_state_service, self.find_closest_safe_state_service,
+                            callback_group=self.service_callback_group)
 
         # Value function publishing
         value_function_topic = self.get_parameter("topics.value_function").value
@@ -158,6 +165,34 @@ class SafetyFilterNode(Node):
         if not self.initialized_safety_filter:
             self.get_logger().info("Initialized safety filter")
             self.initialized_safety_filter = True
+    
+    def find_closest_safe_state_service(self, request, response):
+        """
+        Service to find closest safe state to requested target state
+        """
+        desired_state = jnp.array(request.desired_state.value)
+        weighting = jnp.array(request.weighting.value)
+        if (not self.safety_filter_active) or self.back_buffer_cbf.vf(desired_state, 0.0) >= 0.0:
+            self.get_logger().warn("Current state is already safe")
+            processed_state = Array()
+            processed_state.value = desired_state.tolist()
+            response.processed_state = processed_state
+            return response
+
+        with self.lock:
+            contour = plt.contour(
+                self.grid.coordinate_vectors[0],
+                self.grid.coordinate_vectors[1],
+                self.back_buffer_cbf.vf_table[:, :, self.grid.nearest_index(desired_state)[2], self.grid.nearest_index(desired_state)[3]].T,
+                levels=[0.5],
+            )
+        array_points = [path.vertices for path in contour.collections[0].get_paths()][0]
+        boundary_states = np.concatenate([array_points, np.zeros_like(array_points)], axis=1)
+        closest_state = boundary_states[np.argmin(np.linalg.norm(weighting * (boundary_states- desired_state), axis=1))]
+        processed_state = Array()
+        processed_state.value = closest_state.tolist()
+        response.processed_state = processed_state
+        return response
 
     def swap_buffers(self):
         if self.active_buffer_cbf.vf_table is None:

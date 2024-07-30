@@ -42,6 +42,10 @@ def generate_launch_description():
             'sensing_online',
             description='Do we sense changes in the environment?'
         ),
+        DeclareLaunchArgument(
+            'wait_to_start_hj', 
+            description='Wait for service to start HJ reachability'
+        ),
 
         Node(
             package='refinecbf_ros2',
@@ -87,6 +91,7 @@ def generate_launch_description():
                  'exp': LaunchConfiguration('exp'),
                  'sensing_online': LaunchConfiguration('sensing_online'),
                  'use_sim_time': LaunchConfiguration('use_sim_time'),
+                 'wait_to_start_hj': LaunchConfiguration('wait_to_start_hj'),
                 }
                 
             ],

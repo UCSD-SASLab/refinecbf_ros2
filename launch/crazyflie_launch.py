@@ -55,7 +55,14 @@ def generate_launch_description():
             'sensing_online', default_value='True',
             description='Do we sense changes in the environment?'
         ),
-
+        DeclareLaunchArgument(
+            'wait_to_start_hj', default_value='False', 
+            description='Wait for service to start HJ reachability'
+        ),
+        DeclareLaunchArgument(
+            'path_planning', default_value='False',
+            description='Activate path planning for nominal control'
+        ),
         # Nodes configurations
         Node(
             package='refinecbf_ros2',
@@ -66,6 +73,7 @@ def generate_launch_description():
                         cf_topics_config_path,
                         {'robot': robot,
                          'exp': LaunchConfiguration('exp'),
+                         'path_planning': LaunchConfiguration('path_planning'),
                          'use_sim_time': PythonExpression(["'", LaunchConfiguration('backend'), "' == 'sim'"]),
                          },
                         ],
@@ -132,6 +140,7 @@ def generate_launch_description():
                 'vf_update_accuracy': LaunchConfiguration('vf_update_accuracy'),
                 'use_sim_time': PythonExpression(["'", LaunchConfiguration('backend'), "' == 'sim'"]),
                 'sensing_online': LaunchConfiguration('sensing_online'),
+                'wait_to_start_hj': LaunchConfiguration('wait_to_start_hj'),
             }.items()
         ),
         GroupAction(
