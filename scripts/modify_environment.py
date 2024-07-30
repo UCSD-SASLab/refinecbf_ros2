@@ -27,14 +27,18 @@ class ModifyEnvironmentServer(Node):
             [
                 ("topics.actuation_update", rclpy.Parameter.Type.STRING),
                 ("topics.disturbance_update", rclpy.Parameter.Type.STRING),
+                ("topics.simulated_disturbance_update", rclpy.Parameter.Type.STRING),
                 ("services.modify_environment", rclpy.Parameter.Type.STRING),
             ],
         )
         actuation_update_topic = self.get_parameter("topics.actuation_update").value
-        self.actuation_update_pub = self.create_publisher(HiLoArray, actuation_update_topic, 10)
+        self.actuation_update_pub = self.create_publisher(HiLoArray, actuation_update_topic, 1)
 
         disturbance_update_topic = self.get_parameter("topics.disturbance_update").value
-        self.disturbance_update_pub = self.create_publisher(HiLoArray, disturbance_update_topic, 10)
+        self.disturbance_update_pub = self.create_publisher(HiLoArray, disturbance_update_topic, 1)
+
+        simulated_disturbance_update_topic = self.get_parameter("topics.simulated_disturbance_update").value
+        self.simulated_disturbance_update_pub = self.create_publisher(HiLoArray, simulated_disturbance_update_topic, 1)
 
         # Set up services
         modify_environment_service = self.get_parameter("services.modify_environment").value
@@ -49,7 +53,15 @@ class ModifyEnvironmentServer(Node):
             hi = np.array(disturbance_space["hi"])
             lo = np.array(disturbance_space["lo"])
             self.disturbance_idx += 1
+            self.get_logger().info(f"Updating disturbances with key: {key}")
             self.disturbance_update_pub.publish(HiLoArray(hi=hi, lo=lo))
+            if disturbance_space.get("simulate") is not None:
+                hi_sim = np.array(disturbance_space["simulate"]["hi"])
+                lo_sim = np.array(disturbance_space["simulate"]["lo"])
+            else:
+                hi_sim = hi
+                lo_sim = lo
+            self.simulated_disturbance_update_pub.publish(HiLoArray(hi=hi_sim, lo=lo_sim))
 
     def update_actuation(self):
         if self.actuation_idx >= len(self.actuation_update_list):

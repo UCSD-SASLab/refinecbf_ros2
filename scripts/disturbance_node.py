@@ -19,6 +19,7 @@ class DisturbanceNode(Node):
             "",
             [
                 ("topics.simulated_disturbance", rclpy.Parameter.Type.STRING),
+                ("topics.simulated_disturbance_update", rclpy.Parameter.Type.STRING),
                 ("topics.disturbance_update", rclpy.Parameter.Type.STRING),
                 ("topics.cbf_state", rclpy.Parameter.Type.STRING),
             ],
@@ -27,21 +28,25 @@ class DisturbanceNode(Node):
         self.declare_parameters("", [("beta_skew", 1.0), ("seed", 0), ("rate", 20)])
 
         disturbance_topic = self.get_parameter("topics.simulated_disturbance").value
-        disturbance_update_topic = self.get_parameter("topics.disturbance_update").value
+        disturbance_update_topic = self.get_parameter("topics.simulated_disturbance_update").value
         state_topic = self.get_parameter("topics.cbf_state").value
 
-        self.pub_disturbance = self.create_publisher(Array, disturbance_topic, 10)
+        self.pub_disturbance = self.create_publisher(Array, disturbance_topic, 1)
 
         self.disturbance_update_sub = self.create_subscription(
-            HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 10
+            HiLoArray, disturbance_update_topic, self.callback_disturbance_update, 1
         )
 
-        self.state_sub = self.create_subscription(Array, state_topic, self.callback_state, 10)
+        self.state_sub = self.create_subscription(Array, state_topic, self.callback_state, 1)
         self.disturbance_dims = config.disturbance_space["n_dims"]
 
         if not self.disturbance_dims == 0:
-            self.disturbance_lo = np.array(config.disturbance_space["lo"])
-            self.disturbance_hi = np.array(config.disturbance_space["hi"])
+            if config.disturbance_space.get("simulate") is not None:
+                self.disturbance_lo = np.array(config.disturbance_space["simulate"]["lo"])
+                self.disturbance_hi = np.array(config.disturbance_space["simulate"]["hi"])
+            else:
+                self.disturbance_lo = np.array(config.disturbance_space["lo"])
+                self.disturbance_hi = np.array(config.disturbance_space["hi"])
 
         self.dynamics = config.dynamics
         self.state = None
